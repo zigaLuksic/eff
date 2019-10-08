@@ -81,7 +81,7 @@ let desugar_type type_sbst state =
     | Sugared.TyHandler (t1, t2) ->
         let state', t1' = desugar_type state t1 in
         let state'', t2' = desugar_type state' t2 in
-        (state'', T.Handler {T.value= t1'; T.finally= t2'})
+        (state'', T.Handler (t1', t2'))
   in
   desugar_type state
 
@@ -439,8 +439,7 @@ and desugar_expressions state = function
 
 and desugar_handler loc state
     { Sugared.effect_clauses= eff_cs
-    ; Sugared.value_clause= val_cs
-    ; Sugared.finally_clause= fin_cs } =
+    ; Sugared.value_clause= val_cs } =
   (* Construct a desugared handler with match statements. *)
   let rec group_eff_cs (eff, a2) assoc =
     match Assoc.lookup eff assoc with
@@ -455,27 +454,11 @@ and desugar_handler loc state
     | [a2] ->
         let state'', a2' = desugar_abstraction2 state' a2 in
         (state'', (eff', a2'))
-    | a2s ->
-        let x = fresh_var (Some "$eff_param") in
-        let k = fresh_var (Some "$continuation") in
-        let x_k_vars =
-          Untyped.Tuple
-            [add_loc (Untyped.Var x) loc; add_loc (Untyped.Var k) loc]
-        in
-        let match_term_fun state =
-          let aux st a2 =
-            let st', (p1', p2', t') = desugar_abstraction2 st a2 in
-            (st', (add_loc (Untyped.PTuple [p1'; p2']) loc, t'))
-          in
-          let state', a2s' = fold_map aux state a2s in
-          (state', add_loc (Untyped.Match (add_loc x_k_vars loc, a2s')) loc)
-        in
-        let p1, p2 = (Untyped.PVar x, Untyped.PVar k) in
-        let state'', match_term = match_term_fun state' in
-        let new_eff_cs =
-          (eff', (add_loc p1 loc, add_loc p2 loc, match_term))
-        in
-        (state'', new_eff_cs)
+    | a2::a2s ->
+        Error.syntax ~loc:loc
+          ("Handler contains several clauses for the effect %s."
+          ^^ "You should use a match statement inside a single clause if needed.")
+           eff
   in
   (* group eff cases by effects into lumps to transform into matches *)
   let collected_eff_cs = Assoc.fold_right group_eff_cs eff_cs Assoc.empty in
@@ -486,64 +469,18 @@ and desugar_handler loc state
   (* construct match case for value *)
   let state'', untyped_val_a =
     match val_cs with
-    | [] -> (state', id_abstraction loc)
-    | cs ->
-        let v = fresh_var (Some "$val_param") in
-        let v_var = add_loc (Untyped.Var v) loc in
-        let state'', cs = fold_map desugar_abstraction state' cs in
-        ( state''
-        , ( add_loc (Untyped.PVar v) loc
-          , add_loc (Untyped.Match (v_var, cs)) loc ) )
+    | None -> (state', id_abstraction loc)
+    | Some c -> desugar_abstraction state' c
   in
-  (* construct match case for finally clause *)
-  let state''', untyped_fin_a =
-    match fin_cs with
-    | [] -> (state'', id_abstraction loc)
-    | cs ->
-        let fin = fresh_var (Some "$fin_param") in
-        let fin_var = add_loc (Untyped.Var fin) loc in
-        let state''', cs' = fold_map desugar_abstraction state cs in
-        ( state'''
-        , ( add_loc (Untyped.PVar fin) loc
-          , add_loc (Untyped.Match (fin_var, cs')) loc ) )
-  in
-  ( state'''
+  ( state''
   , { Untyped.effect_clauses= untyped_eff_cs
-    ; Untyped.value_clause= untyped_val_a
-    ; Untyped.finally_clause= untyped_fin_a } )
+    ; Untyped.value_clause= untyped_val_a } )
 
 and match_constructor state loc t cs =
   (* Separate value and effect cases. *)
-  let val_cs, eff_cs = separate_match_cases cs in
-  match eff_cs with
-  | [] ->
-      let state', w, e = desugar_expression state t in
-      let state'', val_cs' = fold_map desugar_abstraction state' val_cs in
-      (state'', w, Untyped.Match (e, val_cs'))
-  | _ ->
-      let val_cs = List.map (fun cs -> Sugared.Val_match cs) val_cs in
-      let x = "$id_par" in
-      let value_match =
-        add_loc (Sugared.Match (add_loc (Sugared.Var x) loc, val_cs)) loc
-      in
-      let h_value_clause = (add_loc (Sugared.PVar x) loc, value_match) in
-      let sugared_h =
-        { Sugared.effect_clauses= Assoc.of_list eff_cs
-        ; Sugared.value_clause= [h_value_clause]
-        ; Sugared.finally_clause= [] }
-      in
-      let state', c = desugar_computation state t in
-      let state'', h = desugar_handler loc state' sugared_h in
-      let loc_h = {it= Untyped.Handler h; at= loc} in
-      (state'', [], Untyped.Handle (loc_h, c))
-
-and separate_match_cases cs =
-  let separator case (val_cs, eff_cs) =
-    match case with
-    | Sugared.Val_match v_cs -> (v_cs :: val_cs, eff_cs)
-    | Sugared.Eff_match e_cs -> (val_cs, e_cs :: eff_cs)
-  in
-  List.fold_right separator cs ([], [])
+  let state', w, e = desugar_expression state t in
+  let state'', val_cs' = fold_map desugar_abstraction state' cs in
+  (state'', w, Untyped.Match (e, val_cs'))
 
 let desugar_top_let state defs =
   let aux_desugar (p, c) (fold_state, defs, forbidden) =

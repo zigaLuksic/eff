@@ -46,8 +46,7 @@ and plain_computation =
 (** Handler definitions *)
 and handler =
   { effect_clauses: (effect, abstraction2) Assoc.t
-  ; value_clause: abstraction
-  ; finally_clause: abstraction }
+  ; value_clause: abstraction }
 
 (** Abstractions that take one argument. *)
 and abstraction = pattern * computation

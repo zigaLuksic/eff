@@ -95,7 +95,7 @@ and of_expression {it; at} =
         | _ -> Lambda (of_abstraction abs) )
     | _ -> Lambda (of_abstraction abs) )
   | CoreSyntax.Effect eff -> Effect eff
-  | CoreSyntax.Handler {effect_clauses; value_clause; finally_clause} ->
+  | CoreSyntax.Handler {effect_clauses; value_clause} ->
       (* Non-trivial case *)
       let effect_clauses' =
         List.map
@@ -103,17 +103,12 @@ and of_expression {it; at} =
           (Assoc.to_list effect_clauses)
       in
       let value_clause' = ValueClause (of_abstraction value_clause) in
-      let finally_clause_abs = of_abstraction finally_clause in
       let ghost_bind = CoreTypes.Variable.fresh "$c_thunk" in
       let match_handler =
         Match
           (Apply (Var ghost_bind, Tuple []), value_clause' :: effect_clauses')
       in
-      if abstraction_is_id finally_clause_abs then
-        Lambda (PVar ghost_bind, match_handler)
-      else
-        Lambda
-          (PVar ghost_bind, Apply (Lambda finally_clause_abs, match_handler))
+      Lambda (PVar ghost_bind, match_handler)
 
 and of_computation {it; at} =
   match it with
@@ -154,9 +149,9 @@ and of_type = function
   | Type.Basic s -> TyBasic s
   | Type.Tuple tys -> TyTuple (List.map of_type tys)
   | Type.Arrow (ty1, ty2) -> TyArrow (of_type ty1, of_type ty2)
-  | Type.Handler {value; finally} ->
+  | Type.Handler (ty1, ty2) ->
       (* Non-trivial case *)
-      TyArrow (TyArrow (of_type Type.unit_ty, of_type value), of_type finally)
+      TyArrow (TyArrow (of_type Type.unit_ty, of_type ty1), of_type ty2)
 
 and of_tydef = function
   | Tctx.Sum assoc ->

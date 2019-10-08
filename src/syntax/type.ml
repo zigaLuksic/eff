@@ -10,13 +10,7 @@ type ty =
   | Basic of Const.ty
   | Tuple of ty list
   | Arrow of ty * ty
-  | Handler of handler_ty
-
-and handler_ty =
-  { value: ty
-  ; (* the type of the _argument_ of value *)
-    finally: ty
-  (* the return type of finally *) }
+  | Handler of ty * ty
 
 (* This type is used when type checking is turned off. Its name
    is syntactically incorrect so that the programmer cannot accidentally
@@ -44,8 +38,7 @@ let rec subst_ty sbst ty =
     | Basic _ as ty -> ty
     | Tuple tys -> Tuple (List.map subst tys)
     | Arrow (ty1, ty2) -> Arrow (subst ty1, subst_ty sbst ty2)
-    | Handler {value= ty1; finally= ty2} ->
-        Handler {value= subst ty1; finally= subst ty2}
+    | Handler (ty1, ty2) -> Handler (subst ty1, subst_ty sbst ty2)
   in
   subst ty
 
@@ -68,7 +61,7 @@ let free_params ty =
     | Basic _ -> []
     | Tuple tys -> flatten_map free_ty tys
     | Arrow (ty1, ty2) -> free_ty ty1 @ free_ty ty2
-    | Handler {value= ty1; finally= ty2} -> free_ty ty1 @ free_ty ty2
+    | Handler (ty1, ty2) -> free_ty ty1 @ free_ty ty2
   in
   CoreUtils.unique_elements (free_ty ty)
 
@@ -125,8 +118,8 @@ let print (ps, t) ppf =
     | Tuple ts ->
         print ~at_level:2 "@[<hov>%t@]"
           (Print.sequence " * " (ty ~max_level:1) ts)
-    | Handler {value= t1; finally= t2} ->
-        print ~at_level:4 "%t =>@ %t" (ty ~max_level:2 t1) (ty t2)
+    | Handler (ty1, ty2) ->
+        print ~at_level:4 "%t =>@ %t" (ty ~max_level:2 ty1) (ty ty2)
   in
   ty t ppf
 

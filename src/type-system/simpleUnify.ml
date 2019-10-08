@@ -30,9 +30,9 @@ let solve cstr =
       | Tctx.Sum _ ->
           assert false (* None of these are transparent *) )
     | t1, (Type.Apply _ as t2) -> unify loc t2 t1
-    | Type.Handler h1, Type.Handler h2 ->
-        unify loc h2.Type.value h1.Type.value ;
-        unify loc h1.Type.finally h2.Type.finally
+    | Type.Handler (ty1, ty2) , Type.Handler (ty1', ty2')  ->
+        unify loc ty1 ty1' ;
+        unify loc ty2 ty2'
     | t1, t2 ->
         let t1, t2 = Type.beautify2 t1 t2 in
         Error.typing ~loc

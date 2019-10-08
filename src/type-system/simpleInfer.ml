@@ -212,10 +212,8 @@ and infer_expr ctx cstr {it= e; at= loc} =
     | Some (t1, t2) -> T.Arrow (t1, t2) )
   | Untyped.Handler
       { Untyped.effect_clauses= ops
-      ; Untyped.value_clause= a_val
-      ; Untyped.finally_clause= a_fin } ->
+      ; Untyped.value_clause= a_val } ->
       let t_value = T.fresh_ty () in
-      let t_finally = T.fresh_ty () in
       let t_yield = T.fresh_ty () in
       let unify_operation (op, a2) =
         match Ctx.infer_effect ctx op with
@@ -232,12 +230,9 @@ and infer_expr ctx cstr {it= e; at= loc} =
       in
       Assoc.iter unify_operation ops ;
       let valt1, valt2 = infer_abstraction ctx cstr a_val in
-      let fint1, fint2 = infer_abstraction ctx cstr a_fin in
       add_ty_constraint cstr loc valt1 t_value ;
       add_ty_constraint cstr loc valt2 t_yield ;
-      add_ty_constraint cstr loc fint2 t_finally ;
-      add_ty_constraint cstr loc fint1 t_yield ;
-      T.Handler {T.value= t_value; T.finally= t_finally}
+      T.Handler (t_value, t_yield)
 
 (* [infer_comp ctx cstr (c,loc)] infers the type of computation [c] in context [ctx].
    It returns the list of newly introduced meta-variables and the inferred type. *)
@@ -269,7 +264,7 @@ and infer_comp ctx cstr cp =
         let t1 = infer_expr ctx cstr e1 in
         let t2 = infer ctx c2 in
         let t3 = T.fresh_ty () in
-        let t1' = T.Handler {T.value= t2; T.finally= t3} in
+        let t1' = T.Handler (t2, t3) in
         add_ty_constraint cstr loc t1' t1 ;
         t3
     | Untyped.Let (defs, c) ->

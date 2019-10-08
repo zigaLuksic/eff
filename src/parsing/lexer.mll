@@ -12,7 +12,6 @@
     ("end", END);
     ("external", EXTERNAL);
     ("false", BOOL false);
-    ("finally", FINALLY);
     ("fun", FUN);
     ("function", FUNCTION);
     ("handle", HANDLE);

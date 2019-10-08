@@ -6,9 +6,7 @@ type ty =
   | Basic of Const.ty
   | Tuple of ty list
   | Arrow of ty * ty
-  | Handler of handler_ty
-
-and handler_ty = {value: ty; finally: ty}
+  | Handler of ty * ty
 
 val int_ty : ty
 

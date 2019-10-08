@@ -104,7 +104,7 @@ let check_well_formed ~loc tydef =
             n
     | T.Arrow (ty1, ty2) -> check ty1 ; check ty2
     | T.Tuple tys -> List.iter check tys
-    | T.Handler {T.value= ty1; T.finally= ty2} -> check ty1 ; check ty2
+    | T.Handler (ty1, ty2) -> check ty1 ; check ty2
   in
   match tydef with
   | Sum constructors ->
@@ -125,8 +125,7 @@ let check_noncyclic ~loc =
         else check_tydef (t :: forbidden) (ty_apply ~loc t lst)
     | T.Arrow (ty1, ty2) -> check forbidden ty1 ; check forbidden ty2
     | T.Tuple tys -> List.iter (check forbidden) tys
-    | T.Handler {T.value= ty1; T.finally= ty2} ->
-        check forbidden ty1 ; check forbidden ty2
+    | T.Handler (ty1, ty2) -> check forbidden ty1 ; check forbidden ty2
   and check_tydef forbidden = function
     | Sum _ -> ()
     | Inline ty -> check forbidden ty

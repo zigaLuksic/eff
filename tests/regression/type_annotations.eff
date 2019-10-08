@@ -28,12 +28,6 @@ let f x : int =
   | Large (l :int) -> 100
 ;;
 
-(* records *)
-type ('a,'b) bull = {small : 'a; large : 'b};;
-
-let f {small= (x: int); large= (y: int)} = x;;
-
-
 (* other *)
 let x = ([] : int list);;
 

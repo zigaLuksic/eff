@@ -115,8 +115,7 @@ and veval state e =
 
 and eval_handler state
     { Untyped.effect_clauses= ops
-    ; Untyped.value_clause= value
-    ; Untyped.finally_clause= fin } =
+    ; Untyped.value_clause= value } =
   let eval_op a2 =
     let p, kvar, c = a2 in
     let f u k = eval_closure (extend kvar (V.Closure k) state) (p, c) u in
@@ -131,7 +130,7 @@ and eval_handler state
         | Some f -> f v k'
         | None -> V.Call (eff, v, k') )
   in
-  fun r -> sequence (eval_closure state fin) (h r)
+  h
 
 and eval_closure state a v =
   let p, c = a in

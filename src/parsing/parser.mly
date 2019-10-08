@@ -5,22 +5,18 @@
   type handler_clause =
     | EffectClause of effect * abstraction2
     | ReturnClause of abstraction
-    | FinallyClause of abstraction
 
   let collect_handler_clauses clauses =
-    let (eff_cs, val_cs, fin_cs) =
+    let (eff_cs, val_cs) =
       List.fold_left
-        (fun (eff_cs, val_cs, fin_cs) clause ->
+        (fun (eff_cs, val_cs) clause ->
           match clause.it with
-          | EffectClause (eff, a2) ->  ((eff, a2) :: eff_cs, val_cs, fin_cs)
-          | ReturnClause a -> (eff_cs, a :: val_cs, fin_cs)
-          | FinallyClause a -> (eff_cs, val_cs, a :: fin_cs))
-        ([], [], [])
-        clauses
+          | EffectClause (eff, a2) ->  ((eff, a2) :: eff_cs, val_cs)
+          | ReturnClause a -> (eff_cs, Some a))
+        ([], None) clauses
     in
     { effect_clauses = Assoc.of_list (List.rev eff_cs);
-      value_clause = List.rev val_cs;
-      finally_clause = List.rev fin_cs }
+      value_clause = val_cs }
 
 %}
 
@@ -262,12 +258,7 @@ function_case:
 
 match_case:
   | p = pattern ARROW t = term
-    { Val_match (p, t) }
-  | EFFECT LPAREN eff = effect p = simple_pattern RPAREN k = simple_pattern ARROW t = term
-    { Eff_match (eff, (p, k, t)) }
-  | EFFECT eff = effect k = simple_pattern ARROW t = term
-    { let unit_loc = Location.make $startpos(eff) $endpos(eff) in
-      Eff_match (eff, ({it= PTuple []; at= unit_loc}, k, t)) }
+    { (p, t) }
 
 lambdas0(SEP):
   | SEP t = term
@@ -302,8 +293,6 @@ plain_handler_clause:
       EffectClause (eff, ({it= PTuple []; at= unit_loc}, k, t)) }
   | c = function_case
     { ReturnClause c }
-  | FINALLY c = function_case
-    { FinallyClause c }
 
 pattern: mark_position(plain_pattern) { $1 }
 plain_pattern:
