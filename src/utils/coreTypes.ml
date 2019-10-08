@@ -18,9 +18,6 @@ let cons_annot = "$1cons"
 
 let cons = Label.fresh cons_annot
 
-(** record fields *)
-module Field = Symbol.Make (Symbol.String)
-
 (** type names *)
 module TyName = Symbol.Make (Symbol.String)
 
@@ -55,6 +52,3 @@ module TyParam = struct
         else Format.fprintf ppf "%sty%i" c (k - 25) )
       k
 end
-
-(** dirt parameters *)
-module DirtParam = Symbol.Make (Symbol.Int)

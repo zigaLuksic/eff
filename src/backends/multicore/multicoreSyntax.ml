@@ -9,8 +9,6 @@ type effect = CoreTypes.Effect.t
 
 type label = CoreTypes.Label.t
 
-type field = CoreTypes.Field.t
-
 (** Types used by MulticoreOcaml. *)
 type ty =
   | TyApply of CoreTypes.TyName.t * ty list
@@ -20,7 +18,6 @@ type ty =
   | TyArrow of ty * ty
 
 type tydef =
-  | TyDefRecord of (CoreTypes.Field.t, ty) Assoc.t
   | TyDefSum of (CoreTypes.Label.t, ty option) Assoc.t
   | TyDefInline of ty
 
@@ -30,7 +27,6 @@ type pattern =
   | PAnnotated of pattern * ty
   | PAs of pattern * variable
   | PTuple of pattern list
-  | PRecord of (field, pattern) Assoc.t
   | PVariant of label * pattern option
   | PConst of Const.t
   | PNonbinding
@@ -41,7 +37,6 @@ type term =
   | Const of Const.t
   | Annotated of term * ty
   | Tuple of term list
-  | Record of (field, term) Assoc.t
   | Variant of label * term option
   | Lambda of abstraction
   | Function of match_case list
@@ -80,7 +75,6 @@ and of_expression {it; at} =
   | CoreSyntax.Const const -> Const const
   | CoreSyntax.Annotated (e, ty) -> Annotated (of_expression e, of_type ty)
   | CoreSyntax.Tuple es -> Tuple (List.map of_expression es)
-  | CoreSyntax.Record assoc -> Record (Assoc.map of_expression assoc)
   | CoreSyntax.Variant (lbl, e_opt) -> (
     match e_opt with
     | None -> Variant (lbl, None)
@@ -147,7 +141,6 @@ and of_pattern {it; at} =
   | CoreSyntax.PAnnotated (p, ty) -> PAnnotated (of_pattern p, of_type ty)
   | CoreSyntax.PAs (p, var) -> PAs (of_pattern p, var)
   | CoreSyntax.PTuple ps -> PTuple (List.map of_pattern ps)
-  | CoreSyntax.PRecord assoc -> PRecord (Assoc.map of_pattern assoc)
   | CoreSyntax.PVariant (lbl, p_opt) -> (
     match p_opt with
     | None -> PVariant (lbl, None)
@@ -166,7 +159,6 @@ and of_type = function
       TyArrow (TyArrow (of_type Type.unit_ty, of_type value), of_type finally)
 
 and of_tydef = function
-  | Tctx.Record assoc -> TyDefRecord (Assoc.map of_type assoc)
   | Tctx.Sum assoc ->
       let converter = function None -> None | Some ty -> Some (of_type ty) in
       TyDefSum (Assoc.map converter assoc)

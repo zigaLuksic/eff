@@ -49,23 +49,17 @@ let rec compare v1 v2 =
     match v2 with
     | V.Closure _ | V.Handler _ -> Invalid
     | V.Const c' -> Const.compare c c'
-    | V.Tuple _ | V.Record _ | V.Variant _ -> Less )
+    | V.Tuple _ | V.Variant _ -> Less )
   | V.Tuple lst -> (
     match v2 with
     | V.Closure _ | V.Handler _ -> Invalid
     | V.Const _ -> Greater
     | V.Tuple lst' -> compare_list lst lst'
-    | V.Record _ | V.Variant _ -> Less )
-  | V.Record lst -> (
-    match v2 with
-    | V.Closure _ | V.Handler _ -> Invalid
-    | V.Const _ | V.Tuple _ -> Greater
-    | V.Record lst' -> compare_record lst lst'
     | V.Variant _ -> Less )
   | V.Variant (lbl, u) -> (
     match v2 with
     | V.Closure _ | V.Handler _ -> Invalid
-    | V.Const _ | V.Tuple _ | V.Record _ -> Greater
+    | V.Const _ | V.Tuple _ -> Greater
     | V.Variant (lbl', u') ->
         let r = Pervasives.compare lbl lbl' in
         if r < 0 then Less else if r > 0 then Greater else compare_option u u'

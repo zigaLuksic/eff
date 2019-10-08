@@ -235,8 +235,6 @@ plain_simple_term:
       in
       (List.fold_right cons ts nil).it
     }
-  | LBRACE flds = separated_nonempty_list(SEMI, separated_pair(field, EQUAL, comma_term)) RBRACE
-    { Record (Assoc.of_list flds) }
   | LPAREN RPAREN
     { Tuple [] }
   | LPAREN t = term COLON ty = ty RPAREN
@@ -344,8 +342,6 @@ plain_simple_pattern:
     { PNonbinding }
   | cst = const_term
     { PConst cst }
-  | LBRACE flds = separated_nonempty_list(SEMI, separated_pair(field, EQUAL, pattern)) RBRACE
-    { PRecord (Assoc.of_list flds) }
   | LBRACK ts = separated_list(SEMI, pattern) RBRACK
     {
       let nil = {it= PVariant (CoreTypes.nil_annot, None);at= Location.make $endpos $endpos} in
@@ -377,10 +373,6 @@ lname:
     { "help" }
   | USE
     { "use" }
-
-field:
-  | f = lname
-    { f }
 
 tyname:
   | t = lname
@@ -469,8 +461,6 @@ ty_def:
     { (t, (ps, x)) }
 
 defined_ty:
-  | LBRACE lst = separated_nonempty_list(SEMI, separated_pair(field, COLON, ty)) RBRACE
-    { TyRecord (Assoc.of_list lst) }
   | lst = cases(sum_case)
     { TySum (Assoc.of_list lst) }
   | t = ty

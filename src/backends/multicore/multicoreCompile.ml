@@ -42,19 +42,11 @@ module Backend (P : BackendParameters) : BackendSignature.T = struct
     in
     sequence
 
-  let translate_field translator sep (f, v) ppf =
-    translate ppf "%t %s %t" (MulticoreSymbol.print_field f) sep (translator v)
-
   let translate_tuple translator lst ppf =
     match lst with
     | [] -> translate ppf "()"
     | lst ->
         translate ppf "(@[<hov>%t@])" (translate_sequence ", " translator lst)
-
-  let translate_record translator sep assoc ppf =
-    let lst = Assoc.to_list assoc in
-    translate ppf "{@[<hov>%t@]}"
-      (translate_sequence "; " (translate_field translator sep) lst)
 
   (* ------------------------------------------------------------------------ *)
   (* Translations *)
@@ -67,8 +59,6 @@ module Backend (P : BackendParameters) : BackendSignature.T = struct
         translate ppf "(%t : %t)" (translate_term t) (translate_type ty)
     | Multicore.Tuple lst ->
         translate ppf "%t" (translate_tuple translate_term lst)
-    | Multicore.Record assoc ->
-        translate ppf "%t" (translate_record translate_term "=" assoc)
     | Multicore.Variant (lbl, None) when lbl = CoreTypes.nil ->
         translate ppf "[]"
     | Multicore.Variant (lbl, None) ->
@@ -129,8 +119,6 @@ module Backend (P : BackendParameters) : BackendSignature.T = struct
     | Multicore.PConst c -> translate ppf "%t" (Const.print c)
     | Multicore.PTuple lst ->
         translate ppf "%t" (translate_tuple translate_pattern lst)
-    | Multicore.PRecord assoc ->
-        translate ppf "%t" (translate_record translate_pattern "=" assoc)
     | Multicore.PVariant (lbl, None) when lbl = CoreTypes.nil ->
         translate ppf "[]"
     | Multicore.PVariant (lbl, None) ->
@@ -166,8 +154,6 @@ module Backend (P : BackendParameters) : BackendSignature.T = struct
   and translate_tydef (name, (params, tydef)) ppf =
     let translate_def tydef ppf =
       match tydef with
-      | Multicore.TyDefRecord assoc ->
-          translate ppf "%t" (translate_record translate_type ":" assoc)
       | Multicore.TyDefSum assoc ->
           let lst = Assoc.to_list assoc in
           let cons_translator ty_opt ppf =

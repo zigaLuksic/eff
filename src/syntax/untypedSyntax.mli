@@ -6,8 +6,6 @@ type effect = CoreTypes.Effect.t
 
 type label = CoreTypes.Label.t
 
-type field = CoreTypes.Field.t
-
 type pattern = plain_pattern CoreUtils.located
 
 and plain_pattern =
@@ -15,7 +13,6 @@ and plain_pattern =
   | PAnnotated of pattern * Type.ty
   | PAs of pattern * variable
   | PTuple of pattern list
-  | PRecord of (field, pattern) Assoc.t
   | PVariant of label * pattern option
   | PConst of Const.t
   | PNonbinding
@@ -28,7 +25,6 @@ and plain_expression =
   | Const of Const.t
   | Annotated of expression * Type.ty
   | Tuple of expression list
-  | Record of (field, expression) Assoc.t
   | Variant of label * expression option
   | Lambda of abstraction
   | Effect of effect
@@ -49,8 +45,8 @@ and plain_computation =
 (** Handler definitions *)
 and handler =
   { effect_clauses: (effect, abstraction2) Assoc.t
-  ; value_clause: abstraction
-  ; finally_clause: abstraction }
+  ; value_clause: abstraction option
+  ; finally_clause: abstraction option}
 
 (** Abstractions that take one argument. *)
 and abstraction = pattern * computation

@@ -20,7 +20,6 @@ module Untyped = UntypedSyntax
 (* Types of constructors. *)
 type cons =
   | Tuple of int
-  | Record of CoreTypes.Field.t list
   | Variant of CoreTypes.Label.t * bool
   | Const of Const.t
   | Wildcard
@@ -29,7 +28,6 @@ type cons =
 let arity = function
   | Const _ | Wildcard -> 0
   | Tuple n -> n
-  | Record flds -> List.length flds
   | Variant (_, b) -> if b then 1 else 0
 
 (* Removes the top-most [As] pattern wrappers, if present (e.g. [2 as x] -> [2]). *)
@@ -45,15 +43,6 @@ let rec cons_of_pattern {it= p; at= loc} =
   | Untyped.PAs (p, _) -> cons_of_pattern p
   | Untyped.PAnnotated (p, _) -> cons_of_pattern p
   | Untyped.PTuple lst -> Tuple (List.length lst)
-  | Untyped.PRecord flds -> (
-    match Assoc.pop flds with
-    | None -> assert false
-    | Some ((lbl, _), _) -> (
-      match Tctx.find_field lbl with
-      | None ->
-          Error.typing ~loc "Unbound record field label %t in a pattern"
-            (CoreTypes.Field.print lbl)
-      | Some (_, _, flds) -> Record (Assoc.keys_of flds) ) )
   | Untyped.PVariant (lbl, opt) -> Variant (lbl, opt <> None)
   | Untyped.PConst c -> Const c
   | Untyped.PVar _ | Untyped.PNonbinding -> Wildcard
@@ -64,7 +53,6 @@ let pattern_of_cons ~loc c lst =
   let plain =
     match c with
     | Tuple n -> Untyped.PTuple lst
-    | Record flds -> Untyped.PRecord (Assoc.of_list (List.combine flds lst))
     | Const const -> Untyped.PConst const
     | Variant (lbl, opt) ->
         Untyped.PVariant (lbl, if opt then Some (List.hd lst) else None)
@@ -83,7 +71,7 @@ let find_constructors lst =
     | cons :: _ -> (
       match cons with
       (* Tuples and records of any type have exactly one constructor. *)
-      | Tuple _ | Record _ -> []
+      | Tuple _ -> []
       (* Try to find an unmatched value in a countable set of constants. *)
       | Const c ->
           let first = function
@@ -133,13 +121,6 @@ let specialize_vector ~loc con = function
   | p1 :: lst -> (
     match (con, remove_as p1) with
     | Tuple _, Untyped.PTuple l -> Some (l @ lst)
-    | Record all, Untyped.PRecord def ->
-        let get_pattern defs lbl =
-          match Assoc.lookup lbl defs with
-          | Some p' -> p'
-          | None -> {it= Untyped.PNonbinding; at= loc}
-        in
-        Some (List.map (get_pattern def) all @ lst)
     | Variant (lbl, _), Untyped.PVariant (lbl', opt) when lbl = lbl' -> (
       match opt with Some p -> Some (p :: lst) | None -> Some lst )
     | Const c, Untyped.PConst c' when Const.equal c c' -> Some lst
@@ -178,7 +159,7 @@ let rec useful ~loc p q =
       match cons with
       (* If the first pattern in [q] is constructed, check the matrix [p]
              specialized for that constructor. *)
-      | Tuple _ | Record _ | Variant _ | Const _ -> (
+      | Tuple _ | Variant _ | Const _ -> (
         match specialize_vector ~loc cons q with
         | None -> assert false
         | Some q' -> useful ~loc (specialize ~loc cons p) q' )

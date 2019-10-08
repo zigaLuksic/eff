@@ -27,7 +27,7 @@ let solve cstr =
     | Type.Apply (t1, lst1), t2 when Tctx.transparent ~loc t1 -> (
       match Tctx.ty_apply ~loc t1 lst1 with
       | Tctx.Inline t -> unify loc t2 t
-      | Tctx.Sum _ | Tctx.Record _ ->
+      | Tctx.Sum _ ->
           assert false (* None of these are transparent *) )
     | t1, (Type.Apply _ as t2) -> unify loc t2 t1
     | Type.Handler h1, Type.Handler h2 ->

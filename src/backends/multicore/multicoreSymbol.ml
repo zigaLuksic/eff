@@ -32,8 +32,6 @@ let print_effect eff ppf = CoreTypes.Effect.print eff ppf
 
 let print_label lbl ppf = CoreTypes.Label.print lbl ppf
 
-let print_field fld ppf = CoreTypes.Field.print fld ppf
-
 let print_tyname tyname ppf =
   let printer desc n =
     if desc = "empty" then

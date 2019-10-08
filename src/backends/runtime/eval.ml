@@ -25,14 +25,6 @@ let rec extend_value p v state =
   | Untyped.PNonbinding, _ -> state
   | Untyped.PTuple ps, Value.Tuple vs ->
       List.fold_right2 extend_value ps vs state
-  | Untyped.PRecord ps, Value.Record vs -> (
-      let extender state (f, p) =
-        match Assoc.lookup f vs with
-        | None -> raise Not_found
-        | Some v -> extend_value p v state
-      in
-      try Assoc.fold_left extender state ps with Not_found ->
-        raise (PatternMatch p.at) )
   | Untyped.PVariant (lbl, None), Value.Variant (lbl', None) when lbl = lbl' ->
       state
   | Untyped.PVariant (lbl, Some p), Value.Variant (lbl', Some v)
@@ -114,7 +106,6 @@ and veval state e =
   | Untyped.Const c -> V.Const c
   | Untyped.Annotated (t, ty) -> veval state t
   | Untyped.Tuple es -> V.Tuple (List.map (veval state) es)
-  | Untyped.Record es -> V.Record (Assoc.map (fun e -> veval state e) es)
   | Untyped.Variant (lbl, None) -> V.Variant (lbl, None)
   | Untyped.Variant (lbl, Some e) -> V.Variant (lbl, Some (veval state e))
   | Untyped.Lambda a -> V.Closure (eval_closure state a)
