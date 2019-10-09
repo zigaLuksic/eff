@@ -1,4 +1,3 @@
-module Untyped = UntypedSyntax
 module EffectMap = Map.Make (CoreTypes.Effect)
 
 type ty_scheme = CoreTypes.TyParam.t list * Type.ty

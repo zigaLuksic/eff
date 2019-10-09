@@ -1,6 +1,6 @@
 open CoreUtils
 open MulticoreSyntax
-module CoreSyntax = UntypedSyntax
+module CoreSyntax = CoreSyntax
 
 (* ------------------------------------------------------------------------ *)
 (* Translations *)

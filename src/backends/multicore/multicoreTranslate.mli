@@ -1,4 +1,4 @@
-module CoreSyntax = UntypedSyntax
+module CoreSyntax = CoreSyntax
 
 val of_computation : CoreSyntax.computation -> MulticoreSyntax.term
 

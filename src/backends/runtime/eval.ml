@@ -1,7 +1,7 @@
 (* Evaluation of the intermediate language, big step. *)
 open CoreUtils
 module V = Value
-module Untyped = UntypedSyntax
+module Core = CoreSyntax
 module RuntimeEnv = Map.Make (CoreTypes.Variable)
 
 type state = Value.value RuntimeEnv.t
@@ -17,19 +17,19 @@ exception PatternMatch of Location.t
 
 let rec extend_value p v state =
   match (p, v) with
-  | Untyped.PVar x, v -> update x v state
-  | Untyped.PAs (p, x), v ->
+  | Core.PVar x, v -> update x v state
+  | Core.PAs (p, x), v ->
       let state = extend_value p v state in
       update x v state
-  | Untyped.PNonbinding, _ -> state
-  | Untyped.PTuple ps, Value.Tuple vs ->
+  | Core.PNonbinding, _ -> state
+  | Core.PTuple ps, Value.Tuple vs ->
       List.fold_right2 extend_value ps vs state
-  | Untyped.PVariant (lbl, None), Value.Variant (lbl', None) when lbl = lbl' ->
+  | Core.PVariant (lbl, None), Value.Variant (lbl', None) when lbl = lbl' ->
       state
-  | Untyped.PVariant (lbl, Some p), Value.Variant (lbl', Some v)
+  | Core.PVariant (lbl, Some p), Value.Variant (lbl', Some v)
     when lbl = lbl' ->
       extend_value p v state
-  | Untyped.PConst c, Value.Const c' when Const.equal c c' -> state
+  | Core.PConst c, Value.Const c' when Const.equal c c' -> state
   | _, _ -> raise (PatternMatch Location.unknown)
 
 let extend p v state =
@@ -44,13 +44,13 @@ let rec sequence k = function
 
 let rec ceval state c =
   match c with
-  | Untyped.Apply (e1, e2) -> (
+  | Core.Apply (e1, e2) -> (
       let v1 = veval state e1 and v2 = veval state e2 in
       match v1 with
       | V.Closure f -> f v2
       | _ -> Error.runtime "Only functions can be applied." )
-  | Untyped.Value e -> V.Value (veval state e)
-  | Untyped.Match (e, cases) ->
+  | Core.Value e -> V.Value (veval state e)
+  | Core.Match (e, cases) ->
       let v = veval state e in
       let rec eval_case = function
         | [] -> Error.runtime "No branches succeeded in a pattern match."
@@ -60,16 +60,16 @@ let rec ceval state c =
               eval_case lst )
       in
       eval_case cases
-  | Untyped.Handle (e, c) ->
+  | Core.Handle (e, c) ->
       let v = veval state e in
       let r = ceval state c in
       let h = V.to_handler v in
       h r
-  | Untyped.Let (lst, c) -> eval_let state lst c
-  | Untyped.LetRec (defs, c) ->
+  | Core.Let (lst, c) -> eval_let state lst c
+  | Core.LetRec (defs, c) ->
       let state = extend_let_rec state (Assoc.of_list defs) in
       ceval state c
-  | Untyped.Check c ->
+  | Core.Check c ->
       let r = ceval state c in
       Print.check ~loc:Location.unknown "%t" (Value.print_result r) ;
       V.unit_result
@@ -96,23 +96,23 @@ and extend_let_rec state defs =
 
 and veval state e =
   match e with
-  | Untyped.Var x -> (
+  | Core.Var x -> (
     match lookup x state with
     | Some v -> v
     | None ->
         Error.runtime "Name %t is not defined." (CoreTypes.Variable.print x) )
-  | Untyped.Const c -> V.Const c
-  | Untyped.Tuple es -> V.Tuple (List.map (veval state) es)
-  | Untyped.Variant (lbl, None) -> V.Variant (lbl, None)
-  | Untyped.Variant (lbl, Some e) -> V.Variant (lbl, Some (veval state e))
-  | Untyped.Lambda a -> V.Closure (eval_closure state a)
-  | Untyped.Effect eff ->
+  | Core.Const c -> V.Const c
+  | Core.Tuple es -> V.Tuple (List.map (veval state) es)
+  | Core.Variant (lbl, None) -> V.Variant (lbl, None)
+  | Core.Variant (lbl, Some e) -> V.Variant (lbl, Some (veval state e))
+  | Core.Lambda a -> V.Closure (eval_closure state a)
+  | Core.Effect eff ->
       V.Closure (fun v -> V.Call (eff, v, fun r -> V.Value r))
-  | Untyped.Handler h -> V.Handler (eval_handler state h)
+  | Core.Handler h -> V.Handler (eval_handler state h)
 
 and eval_handler state
-    { Untyped.effect_clauses= ops
-    ; Untyped.value_clause= value } =
+    { Core.effect_clauses= ops
+    ; Core.value_clause= value } =
   let eval_op a2 =
     let p, kvar, c = a2 in
     let f u k = eval_closure (extend kvar (V.Closure k) state) (p, c) u in

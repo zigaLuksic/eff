@@ -1,5 +1,5 @@
 open CoreUtils
-module Untyped = AnnotatedSyntax
+module Syntax = AnnotatedSyntax
 
 (* Pattern matching exhaustiveness checking as described by Maranget [1]. These
    functions assume that patterns are type correct, so they should be run only
@@ -33,30 +33,30 @@ let arity = function
 (* Removes the top-most [As] pattern wrappers, if present (e.g. [2 as x] -> [2]). *)
 let rec remove_as {it= p} =
   match p with
-  | Untyped.PAs (p', _) -> remove_as p'
-  | Untyped.PAnnotated (p', _) -> remove_as p'
+  | Syntax.PAs (p', _) -> remove_as p'
+  | Syntax.PAnnotated (p', _) -> remove_as p'
   | p -> p
 
-(* Reads constructor description from a pattern, discarding any [Untyped.PAs] layers. *)
+(* Reads constructor description from a pattern, discarding any [Syntax.PAs] layers. *)
 let rec cons_of_pattern {it= p; at= loc} =
   match p with
-  | Untyped.PAs (p, _) -> cons_of_pattern p
-  | Untyped.PAnnotated (p, _) -> cons_of_pattern p
-  | Untyped.PTuple lst -> Tuple (List.length lst)
-  | Untyped.PVariant (lbl, opt) -> Variant (lbl, opt <> None)
-  | Untyped.PConst c -> Const c
-  | Untyped.PVar _ | Untyped.PNonbinding -> Wildcard
+  | Syntax.PAs (p, _) -> cons_of_pattern p
+  | Syntax.PAnnotated (p, _) -> cons_of_pattern p
+  | Syntax.PTuple lst -> Tuple (List.length lst)
+  | Syntax.PVariant (lbl, opt) -> Variant (lbl, opt <> None)
+  | Syntax.PConst c -> Const c
+  | Syntax.PVar _ | Syntax.PNonbinding -> Wildcard
 
 (* Constructs a pattern from a constructor and a list of subpatterns, which must
    contain [arity c] elements. *)
 let pattern_of_cons ~loc c lst =
   let plain =
     match c with
-    | Tuple n -> Untyped.PTuple lst
-    | Const const -> Untyped.PConst const
+    | Tuple n -> Syntax.PTuple lst
+    | Const const -> Syntax.PConst const
     | Variant (lbl, opt) ->
-        Untyped.PVariant (lbl, if opt then Some (List.hd lst) else None)
-    | Wildcard -> Untyped.PNonbinding
+        Syntax.PVariant (lbl, if opt then Some (List.hd lst) else None)
+    | Wildcard -> Syntax.PNonbinding
   in
   {it= plain; at= loc}
 
@@ -120,13 +120,13 @@ let specialize_vector ~loc con = function
   | [] -> None
   | p1 :: lst -> (
     match (con, remove_as p1) with
-    | Tuple _, Untyped.PTuple l -> Some (l @ lst)
-    | Variant (lbl, _), Untyped.PVariant (lbl', opt) when lbl = lbl' -> (
+    | Tuple _, Syntax.PTuple l -> Some (l @ lst)
+    | Variant (lbl, _), Syntax.PVariant (lbl', opt) when lbl = lbl' -> (
       match opt with Some p -> Some (p :: lst) | None -> Some lst )
-    | Const c, Untyped.PConst c' when Const.equal c c' -> Some lst
-    | _, (Untyped.PNonbinding | Untyped.PVar _) ->
+    | Const c, Syntax.PConst c' when Const.equal c c' -> Some lst
+    | _, (Syntax.PNonbinding | Syntax.PVar _) ->
         let nonbinds =
-          List.init (arity con) (fun _ -> {it= Untyped.PNonbinding; at= loc})
+          List.init (arity con) (fun _ -> {it= Syntax.PNonbinding; at= loc})
         in
         Some (nonbinds @ lst)
     | _, _ -> None )
@@ -145,7 +145,7 @@ let rec default = function
   | [] :: lst -> default lst (* Only for completeness. *)
   | (p :: ps) :: lst -> (
     match remove_as p with
-    | Untyped.PNonbinding | Untyped.PVar _ -> ps :: default lst
+    | Syntax.PNonbinding | Syntax.PVar _ -> ps :: default lst
     | _ -> default lst )
 
 (* Is the pattern vector [q] useful w.r.t. pattern matrix [p]? *)
@@ -211,7 +211,7 @@ let rec exhaustive ~loc p = function
         | Some lst ->
             let c = List.hd missing in
             let nonbinds =
-              List.init (arity c) (fun _ -> {it= Untyped.PNonbinding; at= loc})
+              List.init (arity c) (fun _ -> {it= Syntax.PNonbinding; at= loc})
             in
             Some (pattern_of_cons ~loc c nonbinds :: lst) )
 
@@ -227,7 +227,7 @@ let check_patterns ~loc patts =
           Print.warning ~loc
             "@[This pattern-matching is not exhaustive.@.\n                                    \
              Here is an example of a value that is not matched:@.  @[%t@]"
-            (Untyped.print_pattern (List.hd ps))
+            (Syntax.print_pattern (List.hd ps))
       | None -> () )
     | patt :: patts ->
         if not (useful ~loc p [patt]) then (
@@ -246,20 +246,20 @@ let is_irrefutable p = check_patterns ~loc:p.at [p]
 let check_comp c =
   let rec check {it= c; at= loc} =
     match c with
-    | Untyped.Value _ -> ()
-    | Untyped.CAnnotated (c, ty) -> check c
-    | Untyped.Let (lst, c) ->
+    | Syntax.Value _ -> ()
+    | Syntax.CAnnotated (c, ty) -> check c
+    | Syntax.Let (lst, c) ->
         List.iter (fun (p, c) -> is_irrefutable p ; check c) lst ;
         check c
-    | Untyped.LetRec (lst, c) ->
+    | Syntax.LetRec (lst, c) ->
         List.iter (fun (_, (p, c)) -> is_irrefutable p ; check c) lst
-    | Untyped.Match (_, []) ->
+    | Syntax.Match (_, []) ->
         () (* Skip empty match to avoid an unwanted warning. *)
-    | Untyped.Match (_, lst) ->
+    | Syntax.Match (_, lst) ->
         check_patterns ~loc (List.map fst lst) ;
         List.iter (fun (_, c) -> check c) lst
-    | Untyped.Apply _ -> ()
-    | Untyped.Handle (_, c) -> check c
-    | Untyped.Check c -> check c
+    | Syntax.Apply _ -> ()
+    | Syntax.Handle (_, c) -> check c
+    | Syntax.Check c -> check c
   in
   check c
