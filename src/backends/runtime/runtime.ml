@@ -1,7 +1,7 @@
 (* Evaluation of the intermediate language, big step. *)
 open CoreUtils
 module V = Value
-module Untyped = UntypedSyntax
+module Untyped = AnnotatedSyntax
 
 exception PatternMatch of Location.t
 
@@ -16,7 +16,8 @@ module Backend : BackendSignature.T = struct
 
   (* Processing functions *)
   let process_computation state c ty =
-    let v = Eval.run state c in
+    let erased_c = UntypedSyntax.computation_remove_annotations c in
+    let v = Eval.run state erased_c in
     Format.fprintf !Config.output_formatter "@[- : %t = %t@]@."
       (Type.print_beautiful ty) (Value.print_value v) ;
     state
@@ -32,8 +33,10 @@ module Backend : BackendSignature.T = struct
     let state' =
       List.fold_right
         (fun (p, c) st ->
-          let v = Eval.run st c in
-          Eval.extend p v st )
+          let erased_p = UntypedSyntax.pattern_remove_annotations p in
+          let erased_c = UntypedSyntax.computation_remove_annotations c in
+          let v = Eval.run st erased_c in
+          Eval.extend erased_p v st )
         defs state
     in
     List.iter
@@ -49,7 +52,12 @@ module Backend : BackendSignature.T = struct
     state'
 
   let process_top_let_rec state defs vars =
-    let state' = Eval.extend_let_rec state defs in
+    let erase_def (p, c) =
+      let erased_p = UntypedSyntax.pattern_remove_annotations p in
+      let erased_c = UntypedSyntax.computation_remove_annotations c in
+      (erased_p, erased_c)
+    in
+    let state' = Eval.extend_let_rec state (Assoc.map erase_def defs) in
     List.iter
       (fun (x, tysch) ->
         Format.fprintf !Config.output_formatter "@[val %t : %t = <fun>@]@."

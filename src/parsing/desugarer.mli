@@ -3,7 +3,7 @@ type state
 val initial_state : state
 
 val desugar_computation :
-  state -> SugaredSyntax.term -> state * UntypedSyntax.computation
+  state -> SugaredSyntax.term -> state * AnnotatedSyntax.computation
 
 val desugar_def_effect :
      state
@@ -18,12 +18,12 @@ val desugar_external :
 val desugar_top_let :
      state
   -> (SugaredSyntax.pattern * SugaredSyntax.term) list
-  -> state * (UntypedSyntax.pattern * UntypedSyntax.computation) list
+  -> state * (AnnotatedSyntax.pattern * AnnotatedSyntax.computation) list
 
 val desugar_top_let_rec :
      state
   -> (SugaredSyntax.variable * SugaredSyntax.term) list
-  -> state * (CoreTypes.Variable.t * UntypedSyntax.abstraction) list
+  -> state * (CoreTypes.Variable.t * AnnotatedSyntax.abstraction) list
 
 val desugar_tydefs :
      state

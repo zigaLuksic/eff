@@ -1,10 +1,7 @@
 val state : 'a -> 'b => int -> 'b = <fun>
 val better_state : int -> (unit -> 'a) -> 'a = <fun>
 val transaction : (unit -> 'a) -> 'a = <fun>
-Check (file "./state.eff", line 26, char 28):
-20
-Check (file "./state.eff", line 29, char 30):
-30
-Check (file "./state.eff", line 35, char 49):
-20
+Check: 20
+Check: 30
+Check: 20
 - : int = 0

@@ -16,9 +16,8 @@ let lookup x state =
 exception PatternMatch of Location.t
 
 let rec extend_value p v state =
-  match (p.it, v) with
+  match (p, v) with
   | Untyped.PVar x, v -> update x v state
-  | Untyped.PAnnotated (p, t), v -> extend_value p v state
   | Untyped.PAs (p, x), v ->
       let state = extend_value p v state in
       update x v state
@@ -31,7 +30,7 @@ let rec extend_value p v state =
     when lbl = lbl' ->
       extend_value p v state
   | Untyped.PConst c, Value.Const c' when Const.equal c c' -> state
-  | _, _ -> raise (PatternMatch p.at)
+  | _, _ -> raise (PatternMatch Location.unknown)
 
 let extend p v state =
   try extend_value p v state with PatternMatch loc ->
@@ -44,8 +43,7 @@ let rec sequence k = function
       V.Call (op, v, k'')
 
 let rec ceval state c =
-  let loc = c.at in
-  match c.it with
+  match c with
   | Untyped.Apply (e1, e2) -> (
       let v1 = veval state e1 and v2 = veval state e2 in
       match v1 with
@@ -73,7 +71,7 @@ let rec ceval state c =
       ceval state c
   | Untyped.Check c ->
       let r = ceval state c in
-      Print.check ~loc "%t" (Value.print_result r) ;
+      Print.check ~loc:Location.unknown "%t" (Value.print_result r) ;
       V.unit_result
 
 and eval_let state lst c =
@@ -97,14 +95,13 @@ and extend_let_rec state defs =
   state
 
 and veval state e =
-  match e.it with
+  match e with
   | Untyped.Var x -> (
     match lookup x state with
     | Some v -> v
     | None ->
         Error.runtime "Name %t is not defined." (CoreTypes.Variable.print x) )
   | Untyped.Const c -> V.Const c
-  | Untyped.Annotated (t, ty) -> veval state t
   | Untyped.Tuple es -> V.Tuple (List.map (veval state) es)
   | Untyped.Variant (lbl, None) -> V.Variant (lbl, None)
   | Untyped.Variant (lbl, Some e) -> V.Variant (lbl, Some (veval state e))
@@ -164,7 +161,7 @@ let rec top_handle op =
         let str_v = V.Const (Const.of_string str) in
         top_handle (k str_v)
     | eff_annot ->
-        Error.runtime "uncaught effect %t %t." (Value.print_effect eff)
+        Error.runtime "Uncaught effect %t %t." (Value.print_effect eff)
           (Value.print_value v) )
 
 let run state c = top_handle (ceval state c)

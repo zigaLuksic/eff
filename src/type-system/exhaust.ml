@@ -1,5 +1,5 @@
 open CoreUtils
-module Untyped = UntypedSyntax
+module Untyped = AnnotatedSyntax
 
 (* Pattern matching exhaustiveness checking as described by Maranget [1]. These
    functions assume that patterns are type correct, so they should be run only
@@ -247,6 +247,7 @@ let check_comp c =
   let rec check {it= c; at= loc} =
     match c with
     | Untyped.Value _ -> ()
+    | Untyped.CAnnotated (c, ty) -> check c
     | Untyped.Let (lst, c) ->
         List.iter (fun (p, c) -> is_irrefutable p ; check c) lst ;
         check c

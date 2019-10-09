@@ -1,6 +1,5 @@
 (** Syntax of the core language. *)
 open CoreUtils
-module Ann = AnnotatedSyntax
 
 type variable = CoreTypes.Variable.t
 
@@ -8,8 +7,11 @@ type effect = CoreTypes.Effect.t
 
 type label = CoreTypes.Label.t
 
-type pattern =
+type pattern = plain_pattern located
+
+and plain_pattern =
   | PVar of variable
+  | PAnnotated of pattern * Type.ty
   | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
@@ -17,9 +19,12 @@ type pattern =
   | PNonbinding
 
 (** Pure values *)
-type value =
+type value = plain_value located
+
+and plain_value =
   | Var of variable
   | Const of Const.t
+  | VAnnotated of value * Type.ty
   | Tuple of value list
   | Variant of label * value option
   | Lambda of abstraction
@@ -27,8 +32,11 @@ type value =
   | Handler of handler
 
 (** Impure computations *)
-and computation =
+and computation = plain_computation located
+
+and plain_computation =
   | Value of value
+  | CAnnotated of computation * Type.ty
   | Let of (pattern * computation) list * computation
   | LetRec of (variable * abstraction) list * computation
   | Match of value * abstraction list
@@ -47,76 +55,18 @@ and abstraction = pattern * computation
 (** Abstractions that take two arguments. *)
 and abstraction2 = pattern * pattern * computation
 
-let rec value_remove_annotations v =
-  match v.it with
-  | Ann.Var x -> Var x
-  | Ann.Const const -> Const const
-  | Ann.VAnnotated (v, ty) -> value_remove_annotations v
-  | Ann.Tuple vs -> Tuple (left_to_right_map value_remove_annotations vs)
-  | Ann.Variant (lbl, None) -> Variant (lbl, None) 
-  | Ann.Variant (lbl, Some v) -> 
-      Variant (lbl, Some (value_remove_annotations v)) 
-  | Ann.Lambda abs -> Lambda (abstraction_remove_annotations abs)
-  | Ann.Effect eff -> Effect eff
-  | Ann.Handler {effect_clauses=eff_cs; value_clause=v_cs} ->
-      Handler {
-        effect_clauses=Assoc.map abstraction2_remove_annotations eff_cs;
-        value_clause= abstraction_remove_annotations v_cs}
-
-and computation_remove_annotations c =
-  match c.it with
-  | Ann.Value v -> Value (value_remove_annotations v)
-  | Ann.CAnnotated (c, ty) -> computation_remove_annotations c
-  | Ann.Let (defs, c) ->
-      Let 
-        (left_to_right_map abstraction_remove_annotations defs,
-        computation_remove_annotations c)
-  | Ann.LetRec (defs, c) ->
-      LetRec
-        (left_to_right_map 
-          (fun (f, abs) -> (f, abstraction_remove_annotations abs)) defs,
-        computation_remove_annotations c)
-  | Ann.Match (v, defs) ->
-      Match (value_remove_annotations v,
-        left_to_right_map abstraction_remove_annotations defs)
-  | Ann.Apply (v1, v2) ->
-      Apply (value_remove_annotations v1, value_remove_annotations v2)
-  | Ann.Handle (v, c) ->
-      Handle (value_remove_annotations v, computation_remove_annotations c)
-  | Ann.Check c -> Check (computation_remove_annotations c)
-
-and pattern_remove_annotations p =
-  match p.it with
-  | Ann.PVar var -> PVar var
-  | Ann.PAnnotated (p, ty) -> pattern_remove_annotations p
-  | Ann.PAs (p, var) -> PAs (pattern_remove_annotations p, var)
-  | Ann.PTuple ps -> PTuple (left_to_right_map pattern_remove_annotations ps)
-  | Ann.PVariant (lbl, None) -> PVariant (lbl, None)
-  | Ann.PVariant (lbl, Some p) -> 
-      PVariant (lbl, Some (pattern_remove_annotations p))
-  | Ann.PConst const -> PConst const
-  | Ann.PNonbinding -> PNonbinding
-
-and abstraction_remove_annotations (p, c) =
-  (pattern_remove_annotations p, computation_remove_annotations c)
-
-and abstraction2_remove_annotations (p1, p2, c) =
-  (pattern_remove_annotations p1,
-   pattern_remove_annotations p2,
-   computation_remove_annotations c)
-
-
 let rec print_pattern ?max_level p ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
-  match p with
+  match p.it with
   | PVar x -> print "%t" (CoreTypes.Variable.print x)
   | PAs (p, x) ->
       print "%t as %t" (print_pattern p) (CoreTypes.Variable.print x)
+  | PAnnotated (p, ty) -> print_pattern ?max_level p ppf
   | PConst c -> Const.print c ppf
   | PTuple lst -> Print.tuple print_pattern lst ppf
   | PVariant (lbl, None) when lbl = CoreTypes.nil -> print "[]"
   | PVariant (lbl, None) -> print "%t" (CoreTypes.Label.print lbl)
-  | PVariant (lbl, Some PTuple [v1; v2]) when lbl = CoreTypes.cons ->
+  | PVariant (lbl, Some {it= PTuple [v1; v2]}) when lbl = CoreTypes.cons ->
       print "[@[<hov>@[%t@]%t@]]" (print_pattern v1) (pattern_list v2)
   | PVariant (lbl, Some p) ->
       print ~at_level:1 "%t @[<hov>%t@]"
@@ -126,8 +76,8 @@ let rec print_pattern ?max_level p ppf =
 
 and pattern_list ?(max_length = 299) p ppf =
   if max_length > 1 then
-    match p with
-    | PVariant (lbl, Some PTuple [v1; v2]) when lbl = CoreTypes.cons ->
+    match p.it with
+    | PVariant (lbl, Some {it= PTuple [v1; v2]}) when lbl = CoreTypes.cons ->
         Format.fprintf ppf ",@ %t%t" (print_pattern v1)
           (pattern_list ~max_length:(max_length - 1) v2)
     | PVariant (lbl, None) when lbl = CoreTypes.nil -> ()
@@ -136,11 +86,14 @@ and pattern_list ?(max_length = 299) p ppf =
 
 let rec print_computation ?max_level c ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
-  match c with
+  match c.it with
   | Apply (e1, e2) ->
       print ~at_level:1 "%t %t" (print_value e1)
         (print_value ~max_level:0 e2)
   | Value e -> print ~at_level:1 "value %t" (print_value ~max_level:0 e)
+  | CAnnotated (c, ty) -> 
+      print ~at_level:1 "(%t : %t)"
+        (print_computation ~max_level:0 c) (Type.print ([], ty))
   | Match (e, lst) ->
       print "match %t with (@[<hov>%t@])" (print_value e)
         (Print.sequence " | " case lst)
@@ -155,9 +108,10 @@ let rec print_computation ?max_level c ppf =
 
 and print_value ?max_level e ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
-  match e with
+  match e.it with
   | Var x -> print "%t" (CoreTypes.Variable.print x)
   | Const c -> print "%t" (Const.print c)
+  | VAnnotated (t, ty) -> print_value ?max_level t ppf
   | Tuple lst -> Print.tuple print_value lst ppf
   | Variant (lbl, None) -> print "%t" (CoreTypes.Label.print lbl)
   | Variant (lbl, Some e) ->

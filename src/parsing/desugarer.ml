@@ -3,7 +3,7 @@
 open CoreUtils
 module T = Type
 module Sugared = SugaredSyntax
-module Untyped = UntypedSyntax
+module Untyped = AnnotatedSyntax
 
 type constructor_kind = Variant of bool | Effect of bool
 
@@ -255,7 +255,7 @@ let rec desugar_expression state {it= t; at= loc} =
         let state' = {state with local_type_annotations= bound_params'} in
         let state'', w, e = desugar_expression state' t in
         let state''', ty' = desugar_type bound_params' state'' ty in
-        (state''', w, Untyped.Annotated (e, ty'))
+        (state''', w, Untyped.VAnnotated (e, ty'))
     | Sugared.Lambda a ->
         let state', a' = desugar_abstraction state a in
         (state', [], Untyped.Lambda a')

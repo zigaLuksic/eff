@@ -20,9 +20,9 @@ let options =
     ; ( "--no-wrapper"
       , Arg.Unit (fun () -> Config.wrapper := None)
       , " Do not use a command-line wrapper" )
-    ; ( "--compile-multicore-ocaml"
+    (* ; ( "--compile-multicore-ocaml"
       , Arg.String (fun filename -> Config.backend := Multicore filename)
-      , "<file> Compile the Eff code into a Multicore OCaml file <file>" )
+      , "<file> Compile the Eff code into a Multicore OCaml file <file>" ) *)
     ; ("--ascii", Arg.Set Config.ascii, " Use ASCII output")
     ; ( "-v"
       , Arg.Unit
@@ -140,10 +140,11 @@ let main =
     let (module Backend : BackendSignature.T) =
       match !Config.backend with
       | Config.Runtime -> (module Runtime.Backend)
-      | Config.Multicore output_file ->
-          ( module MulticoreCompile.Backend (struct
+      | Config.Multicore output_file -> 
+          failwith "Multicore backend currently not supported."
+          (* ( module MulticoreCompile.Backend (struct
             let output_file = output_file
-          end) )
+          end) ) *)
     in
     let (module Shell) = (module Shell.Make (Backend) : Shell.Shell) in
     (* Run and load all the specified files. *)

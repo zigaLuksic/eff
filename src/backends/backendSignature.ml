@@ -1,4 +1,4 @@
-module CoreSyntax = UntypedSyntax
+module CoreSyntax = AnnotatedSyntax
 module TypeSystem = SimpleInfer
 
 module type T = sig

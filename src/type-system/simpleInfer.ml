@@ -1,6 +1,6 @@
 open CoreUtils
 module T = Type
-module Untyped = UntypedSyntax
+module Untyped = AnnotatedSyntax
 module Ctx = SimpleCtx
 module Unify = SimpleUnify
 
@@ -27,8 +27,9 @@ let warn_implicit_sequencing = ref false
 *)
 (* Can a computation safely be generalized, i.e., is it non-expansive in the parlance of
    SML? In our case non-expansive simply means "is a value". *)
-let nonexpansive = function
+let rec nonexpansive = function
   | Untyped.Value _ -> true
+  | Untyped.CAnnotated (c, ty) -> nonexpansive c.it
   | Untyped.Apply _ | Untyped.Match _ | Untyped.Handle _ | Untyped.Let _
    |Untyped.LetRec _ | Untyped.Check _ ->
       false
@@ -186,7 +187,7 @@ and infer_expr ctx cstr {it= e; at= loc} =
   match e with
   | Untyped.Var x -> Ctx.lookup ~loc ctx x
   | Untyped.Const const -> T.Basic (Const.infer_ty const)
-  | Untyped.Annotated (t, ty) ->
+  | Untyped.VAnnotated (t, ty) ->
       let ty' = infer_expr ctx cstr t in
       add_ty_constraint cstr loc ty ty' ;
       ty
@@ -239,6 +240,10 @@ and infer_expr ctx cstr {it= e; at= loc} =
 and infer_comp ctx cstr cp =
   let rec infer ctx {it= c; at= loc} =
     match c with
+    | Untyped.CAnnotated (c, ty) ->
+        let ty' = infer_comp ctx cstr c in
+        add_ty_constraint cstr loc ty ty' ;
+        ty
     | Untyped.Apply (e1, e2) ->
         let t1 = infer_expr ctx cstr e1 in
         let t2 = infer_expr ctx cstr e2 in
