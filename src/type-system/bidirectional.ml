@@ -328,9 +328,15 @@ and computation_check ctx c ty =
             (Type.print ([], real_ty)) )
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
-        let c_ty = computation_synth ctx c in
-        let b = pattern_check ctx p c_ty in
-        Assoc.concat binds b
+        match p.it with
+        | Syntax.PAnnotated (p, ann_ty) ->
+            let () = computation_check ctx c ann_ty in
+            let b = pattern_check ctx p ann_ty in
+            Assoc.concat binds b
+        | _ ->
+            let c_ty = computation_synth ctx c in
+            let b = pattern_check ctx p c_ty in
+            Assoc.concat binds b
       in
       let binds = List.fold_left def_checker Assoc.empty defs in
       computation_check (extend_ctx ctx binds) c ty
@@ -403,9 +409,15 @@ and computation_synth ctx c =
             (Type.print ([], real_ty)) )
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
-        let c_ty = computation_synth ctx c in
-        let b = pattern_check ctx p c_ty in
-        Assoc.concat binds b
+        match p.it with
+        | Syntax.PAnnotated (p, ann_ty) ->
+            let () = computation_check ctx c ann_ty in
+            let b = pattern_check ctx p ann_ty in
+            Assoc.concat binds b
+        | _ ->
+            let c_ty = computation_synth ctx c in
+            let b = pattern_check ctx p c_ty in
+            Assoc.concat binds b
       in
       let binds = List.fold_left def_checker Assoc.empty defs in
       computation_synth (extend_ctx ctx binds) c
@@ -455,9 +467,15 @@ let infer_top_comp ctx c =
 
 let infer_top_let ~loc ctx defs =
   let def_checker binds (p, c) =
-    let c_ty = computation_synth ctx c in
-    let b = pattern_check ctx p c_ty in
-    Assoc.concat binds b
+    match p.it with
+    | Syntax.PAnnotated (p, ann_ty) ->
+        let () = computation_check ctx c ann_ty in
+        let b = pattern_check ctx p ann_ty in
+        Assoc.concat binds b
+    | _ ->
+        let c_ty = computation_synth ctx c in
+        let b = pattern_check ctx p c_ty in
+        Assoc.concat binds b
   in
   let binds = List.fold_left def_checker Assoc.empty defs in
   let ctx' = extend_ctx ctx binds in
