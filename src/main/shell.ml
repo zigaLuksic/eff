@@ -1,5 +1,5 @@
 open CoreUtils
-module TypeSystem = SimpleInfer
+module TypeSystem = Bidirectional
 
 module type Shell = sig
   type state
