@@ -102,7 +102,9 @@ module Make (Backend : BackendSignature.T) = struct
         let vars, type_system_state' =
           TypeSystem.infer_top_let_rec ~loc state.type_system_state defs'
         in
-        let defs'' = Assoc.of_list defs' in
+        let defs'' = 
+          Assoc.map_of_list (fun (n, ty, abs) -> (n, (ty, abs))) defs'
+        in
         let backend_state' =
           Backend.process_top_let_rec state.backend_state defs'' vars
         in

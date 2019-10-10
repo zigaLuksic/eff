@@ -29,9 +29,9 @@
 %token <string> STRING
 %token <bool> BOOL
 %token <float> FLOAT
-%token <SugaredSyntax.label> UNAME
+%token <SugaredSyntax.label> UNAME EFFNAME
 %token <SugaredSyntax.typaram> PARAM
-%token TYPE ARROW HARROW OF EFFECT PERFORM
+%token TYPE ARROW HARROW OF EFFECT
 %token EXTERNAL
 %token MATCH WITH FUNCTION HASH
 %token LET REC AND IN
@@ -190,10 +190,22 @@ plain_app_term:
     {
       match t.it, ts with
       | Variant (lbl, None), [t] -> Variant (lbl, Some t)
-      | Variant (lbl, _), _ -> Error.syntax ~loc:(t.at) "Label %s applied to too many argument" lbl
+      | Variant (lbl, _), _ -> 
+          Error.syntax ~loc:(t.at) 
+          ("Constructor [%s] applied to too many arguments. "
+          ^^"Constructors accept at most one argument.") lbl
       | _, _ ->
         let apply t1 t2 = {it= Apply(t1, t2); at= Location.union [t1.at; t2.at]} in
         (List.fold_left apply t ts).it
+    }
+  | eff = invoked_effect ts = prefix_term+
+    {
+      match ts with
+      | [t] -> Effect (eff, t)
+      | _ -> 
+          Error.syntax ~loc:(Location.make $startpos(eff) $endpos(eff)) 
+          ("Effect [%s] applied to too many arguments. "
+          ^^"Effects accept at most one argument.") eff
     }
   | t = plain_prefix_term
     { t }
@@ -216,9 +228,7 @@ plain_simple_term:
     { Variant (lbl, None) }
   | cst = const_term
     { Const cst }
-  | PERFORM LPAREN eff = effect t = term RPAREN
-    { Effect (eff, t)}
-  | PERFORM eff = effect
+  | eff = invoked_effect
     { let unit_loc = Location.make $startpos(eff) $endpos(eff) in
       Effect (eff, {it= Tuple []; at= unit_loc})}
   | LBRACK ts = separated_list(SEMI, comma_term) RBRACK
@@ -275,14 +285,14 @@ lambdas1(SEP):
 let_def:
   | p = pattern EQUAL t = term
     { (p, t) }
-  | p = pattern COLON ty= ty EQUAL t = term
+  | p = pattern COLON ty = ty EQUAL t = term
     { (p, {it= Annotated(t, ty); at= Location.make $startpos $endpos}) }
   | x = mark_position(ident) t = lambdas1(EQUAL)
     { ({it= PVar x.it; at= x.at}, t) }
 
 let_rec_def:
-  | f = ident t = lambdas0(EQUAL)
-    { (f, t) }
+  | LPAREN f = ident COLON ty = ty RPAREN t = lambdas0(EQUAL)
+    { (f, ty, t) }
 
 handler_clause: mark_position(plain_handler_clause) { $1 }
 plain_handler_clause:
@@ -499,6 +509,10 @@ sum_case:
 
 effect:
   | eff = UNAME
+    { eff }
+
+invoked_effect:
+  | eff = EFFNAME
     { eff }
 
 %%

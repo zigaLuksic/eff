@@ -51,7 +51,7 @@ module Backend : BackendSignature.T = struct
     state'
 
   let process_top_let_rec state defs vars =
-    let erase_def (p, c) =
+    let erase_def (ty, (p, c)) =
       let erased_p = CoreSyntax.pattern_remove_annotations p in
       let erased_c = CoreSyntax.computation_remove_annotations c in
       (erased_p, erased_c)

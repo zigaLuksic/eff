@@ -28,7 +28,6 @@
     ("mod", MOD);
     ("of", OF);
     ("or", OR);
-    ("perform", PERFORM);
     ("rec", REC);
     ("then", THEN);
     ("true", BOOL true);
@@ -104,6 +103,8 @@ rule token = parse
                                   end
                         }
   | uname               { UNAME (Lexing.lexeme lexbuf) }
+  | '!' uname           { let str = Lexing.lexeme lexbuf in
+                          EFFNAME (String.sub str 1 (String.length str - 1)) }  
   | '\'' lname          { let str = Lexing.lexeme lexbuf in
                           PARAM (String.sub str 1 (String.length str - 1)) }
   | '_'                 { UNDERSCORE }

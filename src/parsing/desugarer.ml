@@ -5,18 +5,17 @@ module T = Type
 module Sugared = SugaredSyntax
 module Untyped = AnnotatedSyntax
 
-type constructor_kind = Variant of bool | Effect of bool
 
 type state =
   { context: (string, CoreTypes.Variable.t) Assoc.t
   ; effect_symbols: (string, CoreTypes.Effect.t) Assoc.t
   ; tyname_symbols: (string, CoreTypes.TyName.t) Assoc.t
-  ; constructors: (string, CoreTypes.Label.t * constructor_kind) Assoc.t
+  ; constructors: (string, CoreTypes.Label.t) Assoc.t
   ; local_type_annotations: (string, CoreTypes.TyParam.t) Assoc.t }
 
 let initial_state =
-  let list_cons = (CoreTypes.cons_annot, (CoreTypes.cons, Variant true)) in
-  let list_nil = (CoreTypes.nil_annot, (CoreTypes.nil, Variant false)) in
+  let list_cons = (CoreTypes.cons_annot, CoreTypes.cons) in
+  let list_nil = (CoreTypes.nil_annot, CoreTypes.nil) in
   let initial_types =
     Assoc.of_list
       [ ("bool", CoreTypes.bool_tyname)
@@ -67,10 +66,11 @@ let desugar_type type_sbst state =
         let state', t' = tyname_to_symbol state t in
         let state'', tys' = fold_map desugar_type state' tys in
         (state'', T.Apply (t', tys'))
-    | Sugared.TyParam t -> (
-      match Assoc.lookup t type_sbst with
-      | None -> Error.syntax ~loc "Unbound type parameter '%s" t
-      | Some p -> (state, T.TyParam p) )
+    | Sugared.TyParam t -> 
+      Error.syntax ~loc "EEFF currently doesn't support type parameters."
+      (* match Assoc.lookup t type_sbst with
+      | None -> Error.syntax ~loc "Unbound type parameter '%s." t
+      | Some p -> (state, T.TyParam p) ) *)
     | Sugared.TyArrow (t1, t2) ->
         let state', t1' = desugar_type state t1 in
         let state'', t2' = desugar_type state' t2 in
@@ -111,7 +111,7 @@ let desugar_tydef state params def =
           let unsugared_lbl =
             match Assoc.lookup lbl st.constructors with
             | None -> failwith "unreachable"
-            | Some (lbl', cons_kind) -> lbl'
+            | Some lbl' -> lbl'
           in
           match cons with
           | None -> (st, (unsugared_lbl, None))
@@ -120,17 +120,15 @@ let desugar_tydef state params def =
               (st', (unsugared_lbl, Some t'))
         in
         let constructors =
-          (* desugar constructor names to Symbol  and add to state *)
+          (* desugar constructor names to Symbol and add to state *)
           let aux (lbl, cons) =
             let unsugared_lbl =
               match Assoc.lookup lbl state.constructors with
               | None -> CoreTypes.Label.fresh lbl
-              | Some (lbl, _) -> lbl
+              | Some lbl -> lbl
               (* Caught by inference for better error *)
             in
-            match cons with
-            | None -> (lbl, (unsugared_lbl, Variant false))
-            | Some _ -> (lbl, (unsugared_lbl, Variant true))
+            (lbl, unsugared_lbl)
           in
           let new_cons = Assoc.kmap aux assoc in
           Assoc.concat new_cons state.constructors
@@ -174,7 +172,8 @@ let desugar_pattern state ?(initial_forbidden = []) p =
   let forbidden = ref initial_forbidden in
   let new_var x =
     if List.mem x !forbidden then
-      Error.syntax ~loc:p.at "Variable %s occurs more than once in a pattern" x
+      Error.syntax ~loc:p.at
+        "Variable [%s] occurs multiple times in a single pattern" x
     else
       let var = fresh_var (Some x) in
       vars := Assoc.update x var !vars ;
@@ -210,21 +209,12 @@ let desugar_pattern state ?(initial_forbidden = []) p =
       | Sugared.PVariant (lbl, p) -> (
         match Assoc.lookup lbl state.constructors with
         | None -> Error.typing ~loc "Unbound constructor %s" lbl
-        | Some (cons_lbl, Variant var) -> (
-          match (var, p) with
-          | true, Some p ->
+        | Some cons_lbl -> (
+          match p with
+          | Some p ->
               let state', p' = desugar_pattern state p in
               (state', Untyped.PVariant (cons_lbl, Some p'))
-          | false, None -> (state, Untyped.PVariant (cons_lbl, None))
-          | true, None ->
-              Error.typing ~loc
-                "Constructor %s should be applied to an argument." lbl
-          | false, Some _ ->
-              Error.typing ~loc
-                "Constructor %s cannot be applied to an argument." lbl )
-        | Some (cons_lbl, Effect eff) ->
-            Error.typing ~loc
-              "Constructor %s should not be an effect constructor." lbl )
+          | None -> (state, Untyped.PVariant (cons_lbl, None)) ) )
       | Sugared.PConst c -> (state, Untyped.PConst c)
       | Sugared.PNonbinding -> (state, Untyped.PNonbinding)
     in
@@ -241,7 +231,7 @@ let rec desugar_expression state {it= t; at= loc} =
     | Sugared.Var x -> (
       match Assoc.lookup x state.context with
       | Some n -> (state, [], Untyped.Var n)
-      | None -> Error.typing ~loc "Unknown variable %s" x )
+      | None -> Error.typing ~loc "Variable [%s] is unknown." x )
     | Sugared.Const k -> (state, [], Untyped.Const k)
     | Sugared.Annotated (t, ty) ->
         let bind bound_ps p =
@@ -276,22 +266,13 @@ let rec desugar_expression state {it= t; at= loc} =
         (state', w, Untyped.Tuple es)
     | Sugared.Variant (lbl, t) -> (
       match Assoc.lookup lbl state.constructors with
-      | None -> Error.typing ~loc "Unbound constructor %s" lbl
-      | Some (cons_lbl, Variant var) -> (
-        match (var, t) with
-        | true, Some t ->
+      | None -> Error.typing ~loc "Unknown constructor [%s]." lbl
+      | Some cons_lbl -> (
+        match t with
+        | Some t ->
             let state', w, e = desugar_expression state t in
             (state', w, Untyped.Variant (cons_lbl, Some e))
-        | false, None -> (state, [], Untyped.Variant (cons_lbl, None))
-        | true, None ->
-            Error.typing ~loc
-              "Constructor %s should be applied to an argument." lbl
-        | false, Some _ ->
-            Error.typing ~loc
-              "Constructor %s cannot be applied to an argument." lbl )
-      | Some (cons_lbl, Effect eff) ->
-          Error.typing ~loc
-            "Constructor %s should not be an effect constructor." lbl )
+        | None -> (state, [], Untyped.Variant (cons_lbl, None)) ) )
     (* Terms that are desugared into computations. We list them explicitly in
        order to catch any future constructs. *)
     | Sugared.Apply _ | Sugared.Match _ | Sugared.Let _ | Sugared.LetRec _
@@ -338,7 +319,7 @@ and desugar_computation state {it= t; at= loc} =
           let state', w, e = desugar_expression state t in
           let loc_eff = add_loc (Untyped.Effect eff') loc in
           (state', w, Untyped.Apply (loc_eff, e))
-      | None -> Error.typing ~loc "Unknown operation %s" eff )
+      | None -> Error.typing ~loc "Operation [%s] is unknown." eff )
     | Sugared.Match (t, cs) -> match_constructor state loc t cs
     | Sugared.Handle (t1, t2) ->
         let state', w1, e1 = desugar_expression state t1 in
@@ -356,7 +337,7 @@ and desugar_computation state {it= t; at= loc} =
         let aux_desugar (p, c) (fold_state, defs, forbidden) =
           let check_forbidden (x, _) =
             if List.mem x forbidden then
-              Error.syntax ~loc:p.at "Several definitions of %s" x
+              Error.syntax ~loc:p.at "Several definitions of value [%s]." x
           in
           let state', p_vars, p' = desugar_pattern state p in
           Assoc.iter check_forbidden p_vars ;
@@ -371,18 +352,20 @@ and desugar_computation state {it= t; at= loc} =
         let _, c = desugar_computation state' t in
         (state, [], Untyped.Let (defs', c))
     | Sugared.LetRec (defs, t) ->
-        let aux_desugar (x, t) (fold_state, ns, forbidden) =
+        let aux_desugar (x, ty, abs) (fold_state, ns, forbidden) =
           if List.mem x forbidden then
-            Error.syntax ~loc:t.at "Several definitions of %s" x ;
+            Error.syntax ~loc:abs.at 
+            "Several definitions of recursive function [%s]." x ;
           let n = fresh_var (Some x) in
           ( {state with context= Assoc.update x n fold_state.context}
           , n :: ns
           , x :: forbidden )
         in
         let state', ns, _ = List.fold_right aux_desugar defs (state, [], []) in
-        let desugar_defs (p, (_, c)) defs =
+        let desugar_defs (n, (_, ty, c)) defs =
           let _, c = desugar_let_rec state' c in
-          (p, c) :: defs
+          let _, ty = desugar_type Assoc.empty state' ty in
+          (n, ty, c) :: defs
         in
         let defs' = List.fold_right desugar_defs (List.combine ns defs) [] in
         let _, c = desugar_computation state' t in
@@ -428,7 +411,7 @@ and desugar_let_rec state {it= exp; at= loc} =
       (state', (add_loc (Untyped.PVar x) loc, add_loc new_match loc))
   | _ ->
       Error.syntax ~loc
-        "This kind of expression is not allowed in a recursive definition"
+        "This kind of expression is not allowed in a recursive definition."
 
 and desugar_expressions state = function
   | [] -> (state, [], [])
@@ -486,7 +469,7 @@ let desugar_top_let state defs =
   let aux_desugar (p, c) (fold_state, defs, forbidden) =
     let check_forbidden (x, _) =
       if List.mem x forbidden then
-        Error.syntax ~loc:p.at "Several definitions of %s" x
+        Error.syntax ~loc:p.at "Several definitions of value [%s]." x
     in
     let state', p_vars, p' = desugar_pattern state p in
     Assoc.iter check_forbidden p_vars ;
@@ -499,18 +482,20 @@ let desugar_top_let state defs =
   (state', defs')
 
 let desugar_top_let_rec state defs =
-  let aux_desugar (x, t) (fold_state, ns, forbidden) =
+  let aux_desugar (x, ty, abs) (fold_state, ns, forbidden) =
     if List.mem x forbidden then
-      Error.syntax ~loc:t.at "Several definitions of %s" x ;
+      Error.syntax ~loc:abs.at
+        "Several definitions of recursive function [%s]." x ;
     let n = fresh_var (Some x) in
     ( {state with context= Assoc.update x n fold_state.context}
     , n :: ns
     , x :: forbidden )
   in
   let state', ns, _ = List.fold_right aux_desugar defs (state, [], []) in
-  let desugar_defs (p, (_, c)) defs =
+  let desugar_defs (n, (_, ty, c)) defs =
     let _, c = desugar_let_rec state' c in
-    (p, c) :: defs
+    let _, ty = desugar_type Assoc.empty state' ty in 
+    (n, ty, c) :: defs
   in
   let defs' = List.fold_right desugar_defs (List.combine ns defs) [] in
   (state', defs')

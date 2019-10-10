@@ -55,7 +55,7 @@ and plain_term =
       (** [handler clauses], where [clauses] are described below. *)
   | Let of (pattern * term) list * term
       (** [let p1 = t1 and ... and pn = tn in t] *)
-  | LetRec of (variable * term) list * term
+  | LetRec of (variable * ty * term) list * term
       (** [let rec f1 p1 = t1 and ... and fn pn = tn in t] *)
   | Match of term * abstraction list
       (** [match t with p1 -> t1 | ... | pn -> tn] *)

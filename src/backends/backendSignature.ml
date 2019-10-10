@@ -29,7 +29,7 @@ module type T = sig
 
   val process_top_let_rec :
        state
-    -> (CoreSyntax.variable, CoreSyntax.abstraction) Assoc.t
+    -> (CoreSyntax.variable, Type.ty * CoreSyntax.abstraction) Assoc.t
     -> (TypeSystem.Syntax.variable * TypeSystem.Ctx.ty_scheme) list
     -> state
 

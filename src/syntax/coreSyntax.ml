@@ -74,7 +74,7 @@ and computation_remove_annotations c =
   | Ann.LetRec (defs, c) ->
       LetRec
         (left_to_right_map 
-          (fun (f, abs) -> (f, abstraction_remove_annotations abs)) defs,
+          (fun (f, ty, abs) -> (f, abstraction_remove_annotations abs)) defs,
         computation_remove_annotations c)
   | Ann.Match (v, defs) ->
       Match (value_remove_annotations v,

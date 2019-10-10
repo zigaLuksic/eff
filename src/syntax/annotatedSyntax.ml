@@ -38,7 +38,7 @@ and plain_computation =
   | Value of value
   | CAnnotated of computation * Type.ty
   | Let of (pattern * computation) list * computation
-  | LetRec of (variable * abstraction) list * computation
+  | LetRec of (variable * Type.ty * abstraction) list * computation
   | Match of value * abstraction list
   | Apply of value * value
   | Handle of value * computation

@@ -22,8 +22,8 @@ val desugar_top_let :
 
 val desugar_top_let_rec :
      state
-  -> (SugaredSyntax.variable * SugaredSyntax.term) list
-  -> state * (CoreTypes.Variable.t * AnnotatedSyntax.abstraction) list
+  -> (SugaredSyntax.variable * SugaredSyntax.ty * SugaredSyntax.term) list
+  -> state * (CoreTypes.Variable.t * Type.ty * AnnotatedSyntax.abstraction) list
 
 val desugar_tydefs :
      state

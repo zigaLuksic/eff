@@ -24,7 +24,7 @@ let rec types_match ty1 ty2 =
       List.for_all2 types_match tys1 tys2
   | Type.Arrow (in_ty1, out_ty1), Type.Arrow (in_ty2, out_ty2) 
   | Type.Handler (in_ty1, out_ty1), Type.Handler (in_ty2, out_ty2) ->
-      types_match in_ty2 in_ty1 && types_match out_ty1 out_ty2      
+      types_match in_ty1 in_ty2 && types_match out_ty1 out_ty2      
   | _, _ -> false
 
 let extend_ctx ctx binds =
@@ -39,7 +39,7 @@ let rec pattern_check ctx p ty =
   | Syntax.PAnnotated (p, ann_ty) ->
       if types_match ty ann_ty then pattern_check ctx p ann_ty else
         Error.typing ~loc 
-          ( "Pattern is checked against type [%t] but annotated with"
+          ( "Pattern is expected to be of type [%t] but is annotated with"
           ^^ " type [%t]." )
           (Type.print ([], ty)) (Type.print ([], ann_ty))
   | Syntax.PAs (p, x) ->
@@ -49,10 +49,9 @@ let rec pattern_check ctx p ty =
       let real_ty = Type.Basic (Const.infer_ty const) in
       if types_match ty real_ty then Assoc.empty else
         Error.typing ~loc 
-          ("Constant pattern [%t] was checked against type [%t] but is of "
-          ^^ "type [%t].")
-          (Const.print const) (Type.print ([], ty))
-          (Type.print ([], real_ty))
+          ("Constant pattern [%t] of type [%t] is expected to be of type [%t].")
+          (Const.print const) (Type.print ([], real_ty))
+          (Type.print ([], ty))
   | Syntax.PTuple ps -> (
       match ty with
       | Type.Tuple tys ->
@@ -61,32 +60,24 @@ let rec pattern_check ctx p ty =
             | [], [] -> binds
             | p :: ps, ty :: tys ->
                 let b = pattern_check ctx p ty in
-                let unique_check k = (
-                  match Assoc.lookup k binds with
-                  | None -> ()
-                  | Some _ ->
-                      Error.typing ~loc 
-                        ( "Variable [%t] is already used in the pattern." )
-                        (CoreTypes.Variable.print k) )
-                in
-                let () = List.iter unique_check (Assoc.keys_of b) in
                 let binds' = Assoc.concat binds b in
                 checker ps tys binds'
             | [], tys ->
                 Error.typing ~loc 
-                  ( "Tuple pattern was checked against type [%t] but does not "
+                  ( "Tuple pattern is expected to be of type [%t] but does not "
                   ^^ "have enough components to typecheck." )
                   (Type.print ([], ty))
             | ps, [] ->
                 Error.typing ~loc 
-                  ( "Tuple pattern was checked against type [%t] but has too "
+                  ( "Tuple pattern is expected to be of type [%t] but has too "
                   ^^ "many components to typecheck." )
                   (Type.print ([], ty))
           in
           checker ps tys Assoc.empty
       | _ ->
+          if types_match ty (Type.Tuple []) then Assoc.empty else 
           Error.typing ~loc 
-            ( "A tuple was checked against the incompatible type [%t]." )
+            ( "A tuple is expected to have the incompatible type [%t]." )
             (Type.print ([], ty))
       )
   | Syntax.PVariant (lbl, arg_p_opt) -> (
@@ -100,8 +91,8 @@ let rec pattern_check ctx p ty =
           match arg_p_opt, arg_ty_opt with
           | None, Some arg_ty ->
               Error.typing ~loc 
-                ( "Constructor pattern [%t] requires argument of type [%t] but"
-                ^^ " was used with no arguments." )
+                ( "Constructor pattern [%t] requires an argument of type [%t] "
+                ^^ "but is used with no arguments." )
                 (CoreTypes.Label.print lbl) (Type.print ([], arg_ty))
           | Some arg_p, None ->
               Error.typing ~loc 
@@ -113,10 +104,10 @@ let rec pattern_check ctx p ty =
           in
           if types_match ty real_ty then binds else
             Error.typing ~loc 
-              ("Constructor pattern [%t] is checked against type [%t] but "
-              ^^ "belongs to type [%t].")
-              (CoreTypes.Label.print lbl) (Type.print ([], ty))
-              (Type.print ([], real_ty)))
+              ("Constructor pattern [%t] belongs to type [%t] but is expected"
+              ^^ " to be of type [%t].")
+              (CoreTypes.Label.print lbl) (Type.print ([], real_ty))
+              (Type.print ([], ty)))
       )
 
 and value_check ctx v ty =
@@ -126,16 +117,16 @@ and value_check ctx v ty =
       let real_ty = Ctx.lookup ~loc ctx x in
       if types_match ty real_ty then () else
         Error.typing ~loc 
-          "Variable [%t] was checked against type [%t] but is of type [%t]."
-          (CoreTypes.Variable.print x) (Type.print ([], ty))
-          (Type.print ([], real_ty))
+          "Variable [%t] of type [%t] is expected to be of type [%t]."
+          (CoreTypes.Variable.print x) (Type.print ([], real_ty))
+          (Type.print ([], ty))
   | Syntax.Const const -> 
       let real_ty = Type.Basic (Const.infer_ty const) in
       if types_match ty real_ty then () else
         Error.typing ~loc 
-          "Constant [%t] was checked against type [%t] but is of type [%t]."
-          (Const.print const) (Type.print ([], ty))
-          (Type.print ([], real_ty))
+          "Constant [%t] of type [%t] is expected to be of type [%t]."
+          (Const.print const) (Type.print ([], real_ty))
+          (Type.print ([], ty))
   | Syntax.Tuple vs -> (
       match ty with
       | Type.Tuple tys ->
@@ -146,25 +137,26 @@ and value_check ctx v ty =
                 (value_check ctx v ty; checker vs tys)
             | [], tys ->
                 Error.typing ~loc 
-                  ( "Tuple was checked against type [%t] but does not have "
-                  ^^ "enough components to typecheck." )
+                  ( "Tuple is expected to be of type [%t] but does not "
+                  ^^ "have enough components to typecheck." )
                   (Type.print ([], ty))
             | vs, [] ->
                 Error.typing ~loc 
-                  ( "Tuple was checked against type [%t] but has too many "
-                  ^^ "components to typecheck." )
+                  ( "Tuple is expected to be of type [%t] but has too "
+                  ^^ "many components to typecheck." )
                   (Type.print ([], ty))
           in
           checker vs tys
       | _ ->
+          if types_match ty (Type.Tuple []) then () else 
           Error.typing ~loc 
-            ( "A tuple was checked against the incompatible type [%t]." )
+            ( "A tuple is expected to have the incompatible type [%t]." )
             (Type.print ([], ty))
       )
   | Syntax.VAnnotated (v, ann_ty) ->
       if types_match ty ann_ty then value_check ctx v ann_ty else
         Error.typing ~loc 
-          ( "Value is checked against type [%t] but annotated with"
+          ( "Value is expected to be of type [%t] but is annotated with"
           ^^ " type [%t]." )
           (Type.print ([], ty)) (Type.print ([], ann_ty))
   | Syntax.Variant (lbl, arg_opt) -> (
@@ -177,7 +169,7 @@ and value_check ctx v ty =
           match arg_opt, arg_ty_opt with
           | None, Some arg_ty ->
               Error.typing ~loc 
-                ( "Constructor [%t] requires argument of type [%t] but was "
+                ( "Constructor [%t] requires argument of type [%t] but is "
                 ^^ "used with no arguments." )
                 (CoreTypes.Label.print lbl) (Type.print ([], arg_ty))
           | Some arg, None ->
@@ -189,10 +181,10 @@ and value_check ctx v ty =
               (value_check ctx arg arg_ty)
           ); if types_match ty real_ty then () else
           Error.typing ~loc 
-            ("Constructor [%t] is checked against type [%t] but belongs to "
-            ^^ "type [%t].")
-            (CoreTypes.Label.print lbl) (Type.print ([], ty)) 
-            (Type.print ([], real_ty)))
+            ("Constructor [%t] belongs to type [%t] but is expected"
+              ^^ " to be of type [%t].")
+            (CoreTypes.Label.print lbl) (Type.print ([], real_ty)) 
+            (Type.print ([], ty)))
       )
   | Syntax.Lambda (p, c) -> (
       match ty with
@@ -201,7 +193,7 @@ and value_check ctx v ty =
           computation_check (extend_ctx ctx binds) c ty2
       | _ ->
           Error.typing ~loc 
-            ( "A function was checked against the incompatible type [%t]." )
+            ( "A function is expected to be of the incompatible type [%t]." )
             (Type.print ([], ty))
       )
   | Syntax.Effect op -> (
@@ -215,14 +207,14 @@ and value_check ctx v ty =
           | Some (t1, t2) -> 
               if types_match ty1 t1 && types_match ty2 t2 then () else
                 Error.typing ~loc 
-                  ( "Effect [%t] has type [%t] but was checked against the "
+                  ( "Effect [%t] has type [%t] but is expected to be of the "
                    ^^ "type [%t]." )
-                  (CoreTypes.Effect.print op) (Type.print ([], ty))
-                  (Type.print ([], ty))
+                  (CoreTypes.Effect.print op)
+                  (Type.print ([], Type.Arrow(t1, t2))) (Type.print ([], ty))
           )
       | _ ->
           Error.typing ~loc 
-            ( "Effect [%t] was checked against an incompatible type [%t]." )
+            ( "Effect [%t] is expected to be of an incompatible type [%t]." )
             (CoreTypes.Effect.print op) (Type.print ([], ty))
       )
   | Syntax.Handler { Syntax.effect_clauses= ops; Syntax.value_clause= (p, c) }
@@ -235,7 +227,7 @@ and value_check ctx v ty =
           )
       | _ ->
           Error.typing ~loc 
-            ( "A handler was checked against an incompatible type [%t]." )
+            ( "The handler is expected to be of an incompatible type [%t]." )
             (Type.print ([], ty))
       )
 
@@ -258,7 +250,7 @@ and value_synth ctx v =
           match arg_opt, arg_ty_opt with
           | None, Some arg_ty ->
               Error.typing ~loc 
-                ( "Constructor [%t] requires argument of type [%t] but was "
+                ( "Constructor [%t] requires an argument of type [%t] but is "
                 ^^ "used with no arguments." )
                 (CoreTypes.Label.print lbl) (Type.print ([], arg_ty))
           | Some arg, None ->
@@ -272,7 +264,7 @@ and value_synth ctx v =
       )
   | Syntax.Lambda abs ->
       Error.typing ~loc 
-        ( "Cannot synthesize type of function. Please provide annotations." )
+        ( "Cannot synthesize types of functions. Please provide annotations." )
   | Syntax.Effect op -> (
       match Ctx.infer_effect ctx op with
       | None ->
@@ -285,7 +277,7 @@ and value_synth ctx v =
   | Syntax.Handler { Syntax.effect_clauses= ops; Syntax.value_clause= a_val }
     ->
       Error.typing ~loc 
-        ( "Cannot synthesize type of handler. Please provide annotations." )
+        ( "Cannot synthesize types of handlers. Please provide annotations." )
 
   
 and computation_check ctx c ty =
@@ -294,7 +286,7 @@ and computation_check ctx c ty =
   | Syntax.CAnnotated (c, ann_ty) ->
       if types_match ty ann_ty then computation_check ctx c ann_ty else
         Error.typing ~loc 
-          ( "Computation is checked against type [%t] but annotated with"
+          ( "Computation is expected to be of type [%t] but is annotated with"
           ^^ " type [%t]." )
           (Type.print ([], ty)) (Type.print ([], ann_ty))
   | Syntax.Apply (v1, v2) ->
@@ -305,7 +297,7 @@ and computation_check ctx c ty =
           if types_match ty out_ty then () else
           Error.typing ~loc 
             ("Function returns values of type [%t] but its return type is "
-            ^^ "checked against type [%t].")
+            ^^ "expected to be of type [%t].")
             (Type.print ([], out_ty)) (Type.print ([], ty))
       | real_ty ->
           Error.typing ~loc 
@@ -324,11 +316,11 @@ and computation_check ctx c ty =
       let ty1 = value_synth ctx v1 in
       (match ty1 with
       | Type.Handler (in_ty, out_ty) ->
-          let () = computation_check ctx c in_ty in
+          let () = computation_check ctx c2 in_ty in
           if types_match ty out_ty then () else
           Error.typing ~loc 
             ("Handler returns values of type [%t] but its return type is "
-            ^^ "checked against type [%t].")
+            ^^ "expected to be of type [%t].")
             (Type.print ([], out_ty)) (Type.print ([], ty))
       | real_ty ->
           Error.typing ~loc 
@@ -343,14 +335,33 @@ and computation_check ctx c ty =
       let binds = List.fold_left def_checker Assoc.empty defs in
       computation_check (extend_ctx ctx binds) c ty
   | Syntax.LetRec (defs, c) ->
-      failwith "TODO"
+      let ty_collect binds (name, ty, abs) =
+        Assoc.update name ty binds
+      in
+      let binds = Assoc.rev (List.fold_left ty_collect Assoc.empty defs) in
+      let ctx' = extend_ctx ctx binds in 
+      let def_checker (name, ty, (p, c)) =
+        match ty with
+        | Type.Arrow (ty1, ty2) ->
+            let b = pattern_check ctx' p ty1 in
+            let ctx'' = extend_ctx ctx' b in
+            computation_check ctx'' c ty2
+        | _ ->
+            Error.typing ~loc 
+              ("The recursive function [%t] is annotated with the non-function"
+              ^^ " type [%t]. Only functions are allowed in recursive"
+              ^^ " definitions.")
+              (CoreTypes.Variable.print name) (Type.print ([], ty))
+      in
+      List.iter def_checker defs;
+      computation_check ctx' c ty
   | Syntax.Check c ->
       if types_match ty Type.unit_ty then
         ignore (computation_synth ctx c)
       else
         Error.typing ~loc 
           ("Command [Check] is used to display types at runtime and returns "
-          ^^ "[%t]. It was instead checked against type [%t].")
+          ^^ "[%t]. However the expected type of this computation is [%t].")
           (Type.print ([], Type.unit_ty)) (Type.print ([], ty))
 
 
@@ -384,7 +395,7 @@ and computation_synth ctx c =
       let ty1 = value_synth ctx v1 in
       (match ty1 with
       | Type.Handler (in_ty, out_ty) ->
-          let () = computation_check ctx c in_ty in
+          let () = computation_check ctx c2 in_ty in
           out_ty
       | real_ty ->
           Error.typing ~loc 
@@ -399,7 +410,26 @@ and computation_synth ctx c =
       let binds = List.fold_left def_checker Assoc.empty defs in
       computation_synth (extend_ctx ctx binds) c
   | Syntax.LetRec (defs, c) ->
-      failwith "TODO"
+      let ty_collect binds (name, ty, abs) =
+        Assoc.update name ty binds
+      in
+      let binds = Assoc.rev (List.fold_left ty_collect Assoc.empty defs) in
+      let ctx' = extend_ctx ctx binds in 
+      let def_checker (name, ty, (p, c)) =
+        match ty with
+        | Type.Arrow (ty1, ty2) ->
+            let b = pattern_check ctx' p ty1 in
+            let ctx'' = extend_ctx ctx' b in
+            computation_check ctx'' c ty2
+        | _ ->
+            Error.typing ~loc 
+              ("The recursive function [%t] is annotated with the non-function"
+              ^^ " type [%t]. Only functions are allowed in recursive"
+              ^^ " definitions.")
+              (CoreTypes.Variable.print name) (Type.print ([], ty))
+      in
+      List.iter def_checker defs;
+      computation_synth ctx' c
   | Syntax.Check c -> ignore (computation_synth ctx c); Type.unit_ty
 
 and effect_clauses_check ctx ops (ty1, ty2) =
@@ -441,4 +471,30 @@ let infer_top_let ~loc ctx defs =
   (vars, ctx')
 
 let infer_top_let_rec ~loc ctx defs =
-  failwith "TODO"
+  let ty_collect binds (name, ty, abs) =
+    Assoc.update name ty binds
+  in
+  let binds = Assoc.rev (List.fold_left ty_collect Assoc.empty defs) in
+  let ctx' = extend_ctx ctx binds in 
+  let def_checker (name, ty, (p, c)) =
+    match ty with
+    | Type.Arrow (ty1, ty2) ->
+        let b = pattern_check ctx' p ty1 in
+        let ctx'' = extend_ctx ctx' b in
+        computation_check ctx'' c ty2
+    | _ ->
+        Error.typing ~loc 
+          ("The recursive function [%t] is annotated with the non-function"
+          ^^ " type [%t]. Only functions are allowed in recursive"
+          ^^ " definitions.")
+          (CoreTypes.Variable.print name) (Type.print ([], ty))
+  in
+  List.iter def_checker defs;
+  let vars = 
+    Assoc.to_list binds 
+    |> List.map (fun (x, ty) -> (x, Ctx.generalize ctx true ty))
+  in
+  List.iter
+    (fun (name, ty, (p, c)) -> Exhaust.is_irrefutable p ; Exhaust.check_comp c)
+    defs ;
+  (vars, ctx')

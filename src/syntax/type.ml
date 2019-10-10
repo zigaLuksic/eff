@@ -12,9 +12,7 @@ type ty =
   | Arrow of ty * ty
   | Handler of ty * ty
 
-(* This type is used when type checking is turned off. Its name
-   is syntactically incorrect so that the programmer cannot accidentally
-   define it. *)
+
 let int_ty = Basic Const.IntegerTy
 
 let string_ty = Basic Const.StringTy

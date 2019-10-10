@@ -252,7 +252,7 @@ let check_comp c =
         List.iter (fun (p, c) -> is_irrefutable p ; check c) lst ;
         check c
     | Syntax.LetRec (lst, c) ->
-        List.iter (fun (_, (p, c)) -> is_irrefutable p ; check c) lst
+        List.iter (fun (_, _, (p, c)) -> is_irrefutable p ; check c) lst
     | Syntax.Match (_, []) ->
         () (* Skip empty match to avoid an unwanted warning. *)
     | Syntax.Match (_, lst) ->

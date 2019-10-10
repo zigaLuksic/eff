@@ -9,7 +9,7 @@ and plain_command =
       (** [type t = tydef] *)
   | TopLet of (Sugared.pattern * Sugared.term) list
       (** [let p1 = t1 and ... and pn = tn] *)
-  | TopLetRec of (Sugared.variable * Sugared.term) list
+  | TopLetRec of (Sugared.variable * Sugared.ty * Sugared.term) list
       (** [let rec f1 p1 = t1 and ... and fn pn = tn] *)
   | External of (Sugared.variable * Sugared.ty * Sugared.variable)
       (** [external x : t = "ext_val_name"] *)
