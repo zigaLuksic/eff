@@ -74,14 +74,14 @@ let desugar_type type_sbst state =
     | Sugared.TyArrow (t1, t2) ->
         let state', t1' = desugar_type state t1 in
         let state'', t2' = desugar_type state' t2 in
-        (state'', T.Arrow (t1', t2'))
+        (state'', T.Arrow (t1', T.Cty(t2', Assoc.empty)))
     | Sugared.TyTuple lst ->
         let state', lst' = fold_map desugar_type state lst in
         (state', T.Tuple lst')
     | Sugared.TyHandler (t1, t2) ->
         let state', t1' = desugar_type state t1 in
         let state'', t2' = desugar_type state' t2 in
-        (state'', T.Handler (t1', t2'))
+        (state'', T.Handler (T.Cty(t1', Assoc.empty), T.Cty(t2', Assoc.empty)))
   in
   desugar_type state
 

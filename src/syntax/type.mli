@@ -1,28 +1,35 @@
 val fresh_ty_param : unit -> CoreTypes.TyParam.t
 
-type ty =
-  | Apply of CoreTypes.TyName.t * ty list
+type vty =
+  | Apply of CoreTypes.TyName.t * vty list
   | TyParam of CoreTypes.TyParam.t
   | Basic of Const.ty
-  | Tuple of ty list
-  | Arrow of ty * ty
-  | Handler of ty * ty
+  | Tuple of vty list
+  | Arrow of vty * cty
+  | Effect of vty * vty
+  | Handler of cty * cty
 
-val int_ty : ty
+and cty =
+  | Cty of vty * eff_sig 
 
-val string_ty : ty
+and eff_sig = (CoreTypes.Effect.t, vty * vty) Assoc.t
 
-val bool_ty : ty
+val int_ty : vty
 
-val float_ty : ty
+val string_ty : vty
 
-val unit_ty : ty
+val bool_ty : vty
 
-val empty_ty : ty
+val float_ty : vty
 
-type substitution = (CoreTypes.TyParam.t, ty) Assoc.t
+val unit_ty : vty
 
-val subst_ty : substitution -> ty -> ty
+val empty_ty : vty
+
+
+type substitution = (CoreTypes.TyParam.t, vty) Assoc.t
+
+val subst_ty : substitution -> vty -> vty
 (** [subst_ty sbst ty] replaces type parameters in [ty] according to [sbst]. *)
 
 val identity_subst : substitution
@@ -36,12 +43,12 @@ val compose_subst : substitution -> substitution -> substitution
     Each parameter is listed only once and in order in which it occurs when
     [ty] is displayed. *)
 
-val free_params : ty -> CoreTypes.TyParam.t list
+val free_params : vty -> CoreTypes.TyParam.t list
 
-val occurs_in_ty : CoreTypes.TyParam.t -> ty -> bool
+val occurs_in_ty : CoreTypes.TyParam.t -> vty -> bool
 (** [occurs_in_ty p ty] checks if the type parameter [p] occurs in type [ty]. *)
 
-val fresh_ty : unit -> ty
+val fresh_ty : unit -> vty
 (** [fresh_ty ()] gives a type [TyParam p] where [p] is a new type parameter on
     each call. *)
 
@@ -51,16 +58,19 @@ val refreshing_subst :
 (** [refresh (ps,qs,rs) ty] replaces the polymorphic parameters [ps,qs,rs] in [ty] with fresh
     parameters. It returns the  *)
 
-val refresh : CoreTypes.TyParam.t list -> ty -> CoreTypes.TyParam.t list * ty
+val refresh : CoreTypes.TyParam.t list -> vty -> CoreTypes.TyParam.t list * vty
 
 (** [beautify ty] returns a sequential replacement of all type parameters in
     [ty] that can be used for its pretty printing. *)
-
-val beautify : CoreTypes.TyParam.t list * ty -> CoreTypes.TyParam.t list * ty
+(*
+val beautify : CoreTypes.TyParam.t list * vty -> CoreTypes.TyParam.t list * vty
 
 val beautify2 :
-  ty -> ty -> (CoreTypes.TyParam.t list * ty) * (CoreTypes.TyParam.t list * ty)
+  ty -> ty -> (CoreTypes.TyParam.t list * ty) * (CoreTypes.TyParam.t list * ty) 
+*)
 
-val print : CoreTypes.TyParam.t list * ty -> Format.formatter -> unit
+val print_vty : CoreTypes.TyParam.t list * vty -> Format.formatter -> unit
 
-val print_beautiful : CoreTypes.TyParam.t list * ty -> Format.formatter -> unit
+val print_cty : CoreTypes.TyParam.t list * cty -> Format.formatter -> unit
+
+(* val print_beautiful : CoreTypes.TyParam.t list * ty -> Format.formatter -> unit *)

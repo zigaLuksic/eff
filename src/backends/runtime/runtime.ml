@@ -14,16 +14,17 @@ module Backend : BackendSignature.T = struct
   let initial_state = Eval.initial_state
 
   (* Processing functions *)
-  let process_computation state c ty =
+  let process_computation state c (params, cty) =
+    let Type.Cty(vty, _) = cty in
     let erased_c = CoreSyntax.computation_remove_annotations c in
     let v = Eval.run state erased_c in
     Format.fprintf !Config.output_formatter "@[- : %t = %t@]@."
-      (Type.print_beautiful ty) (Value.print_value v) ;
+      (Type.print_vty (params, vty)) (Value.print_value v) ;
     state
 
   let process_type_of state c ty =
     Format.fprintf !Config.output_formatter "@[- : %t@]@."
-      (Type.print_beautiful ty) ;
+      (Type.print_cty ty) ;
     state
 
   let process_def_effect state (eff, (ty1, ty2)) = state
@@ -45,7 +46,7 @@ module Backend : BackendSignature.T = struct
         | Some v ->
             Format.fprintf !Config.output_formatter "@[val %t : %t = %t@]@."
               (CoreTypes.Variable.print x)
-              (Type.print_beautiful tysch)
+              (Type.print_vty tysch)
               (Value.print_value v) )
       vars ;
     state'
@@ -61,7 +62,7 @@ module Backend : BackendSignature.T = struct
       (fun (x, tysch) ->
         Format.fprintf !Config.output_formatter "@[val %t : %t = <fun>@]@."
           (CoreTypes.Variable.print x)
-          (Type.print_beautiful tysch) )
+          (Type.print_vty tysch) )
       vars ;
     state'
 

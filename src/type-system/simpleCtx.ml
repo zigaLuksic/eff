@@ -1,10 +1,10 @@
 module EffectMap = Map.Make (CoreTypes.Effect)
 
-type ty_scheme = CoreTypes.TyParam.t list * Type.ty
+type ty_scheme = CoreTypes.TyParam.t list * Type.vty
 
 type t =
   { variables: (CoreTypes.Variable.t, ty_scheme) Assoc.t
-  ; effects: (Type.ty * Type.ty) EffectMap.t }
+  ; effects: (Type.vty * Type.vty) EffectMap.t }
 
 let empty = {variables= Assoc.empty; effects= EffectMap.empty}
 

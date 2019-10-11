@@ -11,7 +11,7 @@ type pattern = plain_pattern located
 
 and plain_pattern =
   | PVar of variable
-  | PAnnotated of pattern * Type.ty
+  | PAnnotated of pattern * Type.vty
   | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
@@ -24,7 +24,7 @@ type value = plain_value located
 and plain_value =
   | Var of variable
   | Const of Const.t
-  | VAnnotated of value * Type.ty
+  | VAnnotated of value * Type.vty
   | Tuple of value list
   | Variant of label * value option
   | Lambda of abstraction
@@ -36,9 +36,9 @@ and computation = plain_computation located
 
 and plain_computation =
   | Value of value
-  | CAnnotated of computation * Type.ty
+  | CAnnotated of computation * Type.cty
   | Let of (pattern * computation) list * computation
-  | LetRec of (variable * Type.ty * abstraction) list * computation
+  | LetRec of (variable * Type.vty * abstraction) list * computation
   | Match of value * abstraction list
   | Apply of value * value
   | Handle of value * computation
@@ -93,7 +93,7 @@ let rec print_computation ?max_level c ppf =
   | Value e -> print ~at_level:1 "value %t" (print_value ~max_level:0 e)
   | CAnnotated (c, ty) -> 
       print ~at_level:1 "(%t : %t)"
-        (print_computation ~max_level:0 c) (Type.print ([], ty))
+        (print_computation ~max_level:0 c) (Type.print_cty ([], ty))
   | Match (e, lst) ->
       print "match %t with (@[<hov>%t@])" (print_value e)
         (Print.sequence " | " case lst)
@@ -111,7 +111,9 @@ and print_value ?max_level e ppf =
   match e.it with
   | Var x -> print "%t" (CoreTypes.Variable.print x)
   | Const c -> print "%t" (Const.print c)
-  | VAnnotated (t, ty) -> print_value ?max_level t ppf
+  | VAnnotated (v, ty) ->
+      print ~at_level:1 "(%t : %t)"
+        (print_value ~max_level:0 v) (Type.print_vty ([], ty))
   | Tuple lst -> Print.tuple print_value lst ppf
   | Variant (lbl, None) -> print "%t" (CoreTypes.Label.print lbl)
   | Variant (lbl, Some e) ->

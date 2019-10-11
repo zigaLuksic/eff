@@ -2,8 +2,8 @@
 module T = Type
 
 type tydef =
-  | Sum of (CoreTypes.Label.t, Type.ty option) Assoc.t
-  | Inline of Type.ty
+  | Sum of (CoreTypes.Label.t, Type.vty option) Assoc.t
+  | Inline of Type.vty
 
 type tyctx = (CoreTypes.TyName.t, CoreTypes.TyParam.t list * tydef) Assoc.t
 
@@ -84,7 +84,7 @@ let transparent ~loc ty_name =
 let ty_apply ~loc ty_name lst =
   let xs, ty = lookup_tydef ~loc ty_name in
   if List.length xs <> List.length lst then
-    Error.typing ~loc "Type constructors %t should be applied to %d arguments"
+    Error.typing ~loc "Type constructors [%t] should be applied to %d arguments."
       (CoreTypes.TyName.print ty_name)
       (List.length xs)
   else
@@ -93,42 +93,52 @@ let ty_apply ~loc ty_name lst =
 
 (** [check_well_formed ~loc ty] checks that type [ty] is well-formed. *)
 let check_well_formed ~loc tydef =
-  let rec check = function
+  let rec vcheck = function
     | T.Basic _ | T.TyParam _ -> ()
     | T.Apply (ty_name, tys) ->
         let params, _ = lookup_tydef ~loc ty_name in
         let n = List.length params in
         if List.length tys <> n then
-          Error.typing ~loc "The type constructor %t expects %d arguments"
+          Error.typing ~loc "The type constructor [%t] expects %d arguments."
             (CoreTypes.TyName.print ty_name)
             n
-    | T.Arrow (ty1, ty2) -> check ty1 ; check ty2
-    | T.Tuple tys -> List.iter check tys
-    | T.Handler (ty1, ty2) -> check ty1 ; check ty2
+    | T.Effect (ty1, ty2) -> vcheck ty1 ; vcheck ty2
+    | T.Arrow (ty1, cty2) -> vcheck ty1 ; ccheck cty2
+    | T.Tuple tys -> List.iter vcheck tys
+    | T.Handler (cty1, cty2) -> ccheck cty1 ; ccheck cty2
+  and ccheck (Cty (vty, eff_sig)) = 
+    vcheck vty; 
+    Assoc.iter (fun (_, (ty1, ty2)) -> vcheck ty1; vcheck ty2) eff_sig
   in
   match tydef with
   | Sum constructors ->
       if not (CoreUtils.no_duplicates (Assoc.keys_of constructors)) then
-        Error.typing ~loc "Constructors of a sum type must be distinct" ;
-      let checker = function _, None -> () | _, Some ty -> check ty in
+        Error.typing ~loc "Constructors of a sum type must be distinct." ;
+      let checker = function _, None -> () | _, Some ty -> vcheck ty in
       Assoc.iter checker constructors
-  | Inline ty -> check ty
+  | Inline ty -> vcheck ty
 
 (** [check_well_formed ~loc ty] checks that the definition of type [ty] is non-cyclic. *)
 let check_noncyclic ~loc =
-  let rec check forbidden = function
+  let rec vcheck forbidden = function
     | T.Basic _ | T.TyParam _ -> ()
     | T.Apply (t, lst) ->
         if List.mem t forbidden then
           Error.typing ~loc "Type definition %t is cyclic."
             (CoreTypes.TyName.print t)
         else check_tydef (t :: forbidden) (ty_apply ~loc t lst)
-    | T.Arrow (ty1, ty2) -> check forbidden ty1 ; check forbidden ty2
-    | T.Tuple tys -> List.iter (check forbidden) tys
-    | T.Handler (ty1, ty2) -> check forbidden ty1 ; check forbidden ty2
+    | T.Effect (ty1, ty2) -> vcheck forbidden ty1 ; vcheck forbidden ty2
+    | T.Arrow (ty1, ty2) -> vcheck forbidden ty1 ; ccheck forbidden ty2
+    | T.Tuple tys -> List.iter (vcheck forbidden) tys
+    | T.Handler (ty1, ty2) -> ccheck forbidden ty1 ; ccheck forbidden ty2
+  and ccheck forbidden (Cty (vty, eff_sig)) =
+    vcheck forbidden vty; 
+    Assoc.iter 
+      (fun (_, (ty1, ty2)) -> vcheck forbidden ty1; vcheck forbidden ty2)
+      eff_sig
   and check_tydef forbidden = function
     | Sum _ -> ()
-    | Inline ty -> check forbidden ty
+    | Inline ty -> vcheck forbidden ty
   in
   check_tydef []
 
