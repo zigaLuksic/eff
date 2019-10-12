@@ -102,13 +102,12 @@ let check_well_formed ~loc tydef =
           Error.typing ~loc "The type constructor [%t] expects %d arguments."
             (CoreTypes.TyName.print ty_name)
             n
-    | T.Effect (ty1, ty2) -> vcheck ty1 ; vcheck ty2
     | T.Arrow (ty1, cty2) -> vcheck ty1 ; ccheck cty2
     | T.Tuple tys -> List.iter vcheck tys
     | T.Handler (cty1, cty2) -> ccheck cty1 ; ccheck cty2
   and ccheck (Cty (vty, eff_sig)) = 
-    vcheck vty; 
-    Assoc.iter (fun (_, (ty1, ty2)) -> vcheck ty1; vcheck ty2) eff_sig
+    vcheck vty 
+    (* ; Assoc.iter (fun (_, (ty1, ty2)) -> vcheck ty1; vcheck ty2) eff_sig *)
   in
   match tydef with
   | Sum constructors ->
@@ -127,15 +126,14 @@ let check_noncyclic ~loc =
           Error.typing ~loc "Type definition %t is cyclic."
             (CoreTypes.TyName.print t)
         else check_tydef (t :: forbidden) (ty_apply ~loc t lst)
-    | T.Effect (ty1, ty2) -> vcheck forbidden ty1 ; vcheck forbidden ty2
     | T.Arrow (ty1, ty2) -> vcheck forbidden ty1 ; ccheck forbidden ty2
     | T.Tuple tys -> List.iter (vcheck forbidden) tys
     | T.Handler (ty1, ty2) -> ccheck forbidden ty1 ; ccheck forbidden ty2
   and ccheck forbidden (Cty (vty, eff_sig)) =
-    vcheck forbidden vty; 
-    Assoc.iter 
+    vcheck forbidden vty 
+    (* Assoc.iter 
       (fun (_, (ty1, ty2)) -> vcheck forbidden ty1; vcheck forbidden ty2)
-      eff_sig
+      eff_sig *)
   and check_tydef forbidden = function
     | Sum _ -> ()
     | Inline ty -> vcheck forbidden ty

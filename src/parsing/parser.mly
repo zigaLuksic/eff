@@ -21,7 +21,7 @@
 %}
 
 %token LPAREN RPAREN LBRACK RBRACK LBRACE RBRACE
-%token COLON COMMA SEMI SEMISEMI EQUAL CONS
+%token COLON COMMA SEMI SEMISEMI EQUAL CONS EXCLAMATION
 %token BEGIN END
 %token <string> LNAME
 %token UNDERSCORE AS
@@ -104,9 +104,9 @@ plain_topdef:
     { Commands.TopLetRec defs }
   | EXTERNAL x = ident COLON t = ty EQUAL n = STRING
     { Commands.External (x, t, n) }
-  | EFFECT eff = effect COLON t1 = prod_ty ARROW t2 = ty
+  | EFFECT eff = effect COLON t1 = ty_apply ARROW t2 = ty
     { Commands.DefEffect (eff, (t1, t2))}
-  | EFFECT eff = effect COLON t = prod_ty
+  | EFFECT eff = effect COLON t = ty
     { let unit_loc = Location.make $startpos(t) $endpos(t) in
       Commands.DefEffect (eff, ({it= TyTuple []; at= unit_loc}, t))}
 
@@ -296,7 +296,7 @@ let_rec_def:
 
 handler_clause: mark_position(plain_handler_clause) { $1 }
 plain_handler_clause:
-  | EFFECT LPAREN eff = effect p = simple_pattern RPAREN k = simple_pattern ARROW t = term
+  | EFFECT eff = effect p = simple_pattern k = simple_pattern ARROW t = term
     { EffectClause (eff, (p, k, t)) }
   | EFFECT eff = effect  k = simple_pattern ARROW t = term
     { let unit_loc = Location.make $startpos(eff) $endpos(eff) in
@@ -467,14 +467,16 @@ defined_ty:
 
 ty: mark_position(plain_ty) { $1 }
 plain_ty:
+  | t = ty_apply EXCLAMATION LBRACE effs = separated_list(COMMA, effect) RBRACE
+    { TyCty(t, effs) }
   | t1 = ty_apply ARROW t2 = ty
     { TyArrow (t1, t2) }
-  | t1 = ty_apply HARROW t2 = ty
+  | t1 = ty HARROW t2 = ty
     { TyHandler (t1, t2) }
   | t = plain_prod_ty
     { t }
 
-prod_ty: mark_position(plain_prod_ty) { $1 }
+(* prod_ty: mark_position(plain_prod_ty) { $1 } *)
 plain_prod_ty:
   | ts = separated_nonempty_list(STAR, ty_apply)
     {

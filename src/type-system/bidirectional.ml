@@ -29,6 +29,13 @@ let rec vtypes_match ty1 ty2 =
   | _, _ -> false
 
 and ctypes_match cty1 cty2 =
+  let Type.Cty (ty1, effs1) = cty1 in
+  let Type.Cty (ty2, effs2) = cty2 in
+  vtypes_match ty1 ty2
+  && List.for_all (fun x -> List.mem x effs1) effs2 
+  && List.for_all (fun x -> List.mem x effs2) effs1 
+
+(* and ctypes_match cty1 cty2 =
   let Type.Cty (ty1, effsig1) = cty1 in
   let Type.Cty (ty2, effsig2) = cty2 in
   let rec sig_match = function
@@ -42,8 +49,7 @@ and ctypes_match cty1 cty2 =
             vtypes_match ty1 ty2 && vtypes_match ty1' ty2' && sig_match effs)
   in
   vtypes_match ty1 ty2
-  && sig_match (Assoc.keys_of effsig1 @ Assoc.keys_of effsig2)
-
+  && sig_match (Assoc.keys_of effsig1 @ Assoc.keys_of effsig2) *)
 
 let extend_ctx ctx binds =
   Assoc.fold_left
@@ -214,28 +220,6 @@ and value_check ctx v ty =
             ( "A function is expected to be of the incompatible type [%t]." )
             (Type.print_vty ([], ty))
       )
-  | Syntax.Effect op -> (
-      match ty with
-      | Type.Effect (ty1, ty2) -> (
-          match Ctx.infer_effect ctx op with
-          | None ->
-              Error.typing ~loc 
-                ( "Effect [%t] has no known type." )
-                (CoreTypes.Effect.print op)
-          | Some (t1, t2) -> 
-              if vtypes_match ty1 t1 && vtypes_match ty2 t2 then () else
-                Error.typing ~loc 
-                  ( "Effect [%t] has type [%t] but is expected to be of the "
-                   ^^ "type [%t]." )
-                  (CoreTypes.Effect.print op)
-                  (Type.print_vty ([], Type.Effect(t1, t2))) 
-                  (Type.print_vty ([], ty))
-          )
-      | _ ->
-          Error.typing ~loc 
-            ( "Effect [%t] is expected to be of an incompatible type [%t]." )
-            (CoreTypes.Effect.print op) (Type.print_vty ([], ty))
-      )
   | Syntax.Handler { Syntax.effect_clauses= ops; Syntax.value_clause= (p, c) }
     -> (
       match ty with
@@ -285,15 +269,6 @@ and value_synth ctx v =
   | Syntax.Lambda abs ->
       Error.typing ~loc 
         ( "Cannot synthesize types of functions. Please provide annotations." )
-  | Syntax.Effect op -> (
-      match Ctx.infer_effect ctx op with
-      | None ->
-          Error.typing ~loc 
-            ( "Effect [%t] has no known type." )
-            (CoreTypes.Effect.print op)
-      | Some (t1, t2) -> 
-          Type.Effect (t1, t2)
-    )
   | Syntax.Handler { Syntax.effect_clauses= ops; Syntax.value_clause= a_val }
     ->
       Error.typing ~loc 
@@ -390,14 +365,38 @@ and computation_check ctx c cty =
       in
       List.iter def_checker defs;
       computation_check ctx' c cty
+  | Syntax.Effect (eff, arg) -> (
+      match Ctx.infer_effect ctx eff with
+      | None ->
+          Error.typing ~loc 
+            ( "Effect [%t] has no known type." )
+            (CoreTypes.Effect.print eff)
+      | Some (ty1, ty2) ->
+          let Type.Cty (vty2, effs) = cty in
+          value_check ctx arg ty1;
+          if List.mem eff effs then
+            if vtypes_match ty2 vty2 then () else
+              Error.typing ~loc 
+                ( "Effect [%t] returns values of type [%t] but a value of"
+                  ^^ " type [%t] is expected." )
+                (CoreTypes.Effect.print eff)
+                (Type.print_vty ([], ty2)) 
+                (Type.print_vty ([], vty2))
+          else
+            Error.typing ~loc 
+              ( "Effect [%t] is not present in signature of computation"
+                ^^ " type [%t]." )
+              (CoreTypes.Effect.print eff)
+              (Type.print_cty ([], cty))
+      )
   | Syntax.Check c ->
-      if ctypes_match cty (Type.Cty (Type.unit_ty, Assoc.empty)) then
+      if ctypes_match cty (Type.Cty (Type.unit_ty, [])) then
         ignore (computation_synth ctx c)
       else
         Error.typing ~loc 
-          ("Command [Check] is used to display types at runtime and returns "
+          ("Command [Check] is used to display values at runtime and returns "
           ^^ "[%t]. However the expected type of this computation is [%t].")
-          (Type.print_cty ([], Type.Cty (Type.unit_ty, Assoc.empty)))
+          (Type.print_cty ([], Type.Cty (Type.unit_ty, [])))
           (Type.print_cty ([], cty))
 
 
@@ -413,7 +412,7 @@ and computation_synth ctx c =
           Error.typing ~loc 
             ("Trying to apply a non-function element of type [%t].")
             (Type.print_vty ([], real_ty)) )
-  | Syntax.Value v -> Type.Cty (value_synth ctx v, Assoc.empty)
+  | Syntax.Value v -> Type.Cty (value_synth ctx v, [])
   | Syntax.Match (v, []) ->
       Error.typing ~loc 
         ("Cannot synthesize computation type when matching something of [%t] "
@@ -473,8 +472,17 @@ and computation_synth ctx c =
       in
       List.iter def_checker defs;
       computation_synth ctx' c
+  | Syntax.Effect (eff, arg) -> (
+      match Ctx.infer_effect ctx eff with
+      | None ->
+          Error.typing ~loc 
+            ( "Effect [%t] has no known type." )
+            (CoreTypes.Effect.print eff)
+      | Some (ty1, ty2) ->
+          value_check ctx arg ty1; Type.Cty(ty2, [eff])
+    )
   | Syntax.Check c -> 
-      ignore (computation_synth ctx c); Type.Cty (Type.unit_ty, Assoc.empty)
+      ignore (computation_synth ctx c); Type.Cty (Type.unit_ty, [])
 
 and effect_clauses_check ctx ops (ty1, ty2) =
   let rec checker (op, (px, pk, c_op)) =

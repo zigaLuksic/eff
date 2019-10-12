@@ -23,7 +23,6 @@ type value =
   | Tuple of value list
   | Variant of label * value option
   | Lambda of abstraction
-  | Effect of effect
   | Handler of handler
 
 (** Impure computations *)
@@ -34,6 +33,7 @@ and computation =
   | Match of value * abstraction list
   | Apply of value * value
   | Handle of value * computation
+  | Effect of effect * value
   | Check of computation
 
 (** Handler definitions *)
@@ -57,7 +57,6 @@ let rec value_remove_annotations v =
   | Ann.Variant (lbl, Some v) -> 
       Variant (lbl, Some (value_remove_annotations v)) 
   | Ann.Lambda abs -> Lambda (abstraction_remove_annotations abs)
-  | Ann.Effect eff -> Effect eff
   | Ann.Handler {effect_clauses=eff_cs; value_clause=v_cs} ->
       Handler {
         effect_clauses=Assoc.map abstraction2_remove_annotations eff_cs;
@@ -83,6 +82,7 @@ and computation_remove_annotations c =
       Apply (value_remove_annotations v1, value_remove_annotations v2)
   | Ann.Handle (v, c) ->
       Handle (value_remove_annotations v, computation_remove_annotations c)
+  | Ann.Effect (eff, arg) -> Effect (eff, value_remove_annotations arg)
   | Ann.Check c -> Check (computation_remove_annotations c)
 
 and pattern_remove_annotations p =
@@ -151,6 +151,10 @@ let rec print_computation ?max_level c ppf =
         (Print.sequence " | " let_abstraction lst)
         (print_computation c)
   | LetRec (lst, c) -> print "let rec ... in %t" (print_computation c)
+  | Effect (eff, arg) -> 
+      print ~at_level:1 "%t @[<hov>%t@]"
+        (CoreTypes.Effect.print eff)
+        (print_value arg)
   | Check c -> print "check %t" (print_computation c)
 
 and print_value ?max_level e ppf =
@@ -169,7 +173,7 @@ and print_value ?max_level e ppf =
       print "{effect_clauses = %t; value_clause = (%t)}"
         (Print.sequence " | " effect_clause (Assoc.to_list h.effect_clauses))
         (abstraction h.value_clause)
-  | Effect eff -> print "%t" (CoreTypes.Effect.print eff)
+  
 
 and abstraction (p, c) ppf =
   Format.fprintf ppf "%t -> %t" (print_pattern p) (print_computation c)

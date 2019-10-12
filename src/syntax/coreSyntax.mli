@@ -21,7 +21,6 @@ type value =
   | Tuple of value list
   | Variant of label * value option
   | Lambda of abstraction
-  | Effect of effect
   | Handler of handler
 
 (** Impure computations *)
@@ -32,6 +31,7 @@ and computation =
   | Match of value * abstraction list
   | Apply of value * value
   | Handle of value * computation
+  | Effect of effect * value
   | Check of computation
 
 (** Handler definitions *)

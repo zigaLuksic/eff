@@ -6,13 +6,12 @@ type vty =
   | Basic of Const.ty
   | Tuple of vty list
   | Arrow of vty * cty
-  | Effect of vty * vty
   | Handler of cty * cty
 
 and cty =
   | Cty of vty * eff_sig 
 
-and eff_sig = (CoreTypes.Effect.t, vty * vty) Assoc.t
+and eff_sig = CoreTypes.Effect.t list (* (CoreTypes.Effect.t, vty * vty) Assoc.t *)
 
 val int_ty : vty
 

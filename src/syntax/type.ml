@@ -10,13 +10,12 @@ type vty =
   | Basic of Const.ty
   | Tuple of vty list
   | Arrow of vty * cty
-  | Effect of vty * vty
   | Handler of cty * cty
 
 and cty =
   | Cty of vty * eff_sig 
 
-and eff_sig = (CoreTypes.Effect.t, vty * vty) Assoc.t
+and eff_sig = CoreTypes.Effect.t list (* (CoreTypes.Effect.t, vty * vty) Assoc.t *)
 
 
 let int_ty = Basic Const.IntegerTy
@@ -42,7 +41,6 @@ let rec subst_ty sbst ty =
       match Assoc.lookup p sbst with Some ty -> ty | None -> ty )
     | Basic _ as ty -> ty
     | Tuple tys -> Tuple (List.map subst tys)
-    | Effect (ty1, ty2) -> Effect (subst ty1, subst_ty sbst ty2)    
     | Arrow (ty1, Cty (ty2, effsig2)) -> 
         Arrow (subst ty1, Cty (subst_ty sbst ty2, effsig2))
     | Handler (Cty (ty1, effsig1), Cty (ty2, effsig2)) ->
@@ -69,7 +67,6 @@ let free_params ty =
     | Basic _ -> []
     | Tuple tys -> flatten_map free_ty tys
     | Arrow (ty1, Cty(ty2, _)) -> free_ty ty1 @ free_ty ty2
-    | Effect (ty1, ty2) -> free_ty ty1 @ free_ty ty2
     | Handler (Cty(ty1, _), Cty(ty2, _)) -> free_ty ty1 @ free_ty ty2
   in
   CoreUtils.unique_elements (free_ty ty)
@@ -115,9 +112,6 @@ let rec print_vty (ps, vty) ppf =
     | Arrow (t1, t2) ->
         print ~at_level:5 "@[<h>%t ->@ %t@]" 
         (print_vty ~max_level:4 t1) (print_cty (ps, t2))
-    | Effect (t1, t2) ->
-        print ~at_level:5 "@[<h>%t ->@ %t@]" 
-        (print_vty ~max_level:4 t1) (print_vty ~max_level:4 t1)
     | Basic b -> print "%t" (Const.print_ty b)
     | Apply (t, []) -> print "%t" (CoreTypes.TyName.print t)
     | Apply (t, [s]) ->
@@ -138,6 +132,13 @@ let rec print_vty (ps, vty) ppf =
   in
   print_vty vty ppf
 
+and print_cty (ps, Cty (vty, effs)) ppf =
+  let print_effty eff ppf = CoreTypes.Effect.print eff ppf in
+  Print.print ppf "@[<hov>(%t!{%t})@]"
+    (print_vty (ps, vty))
+    (Print.sequence ", " (print_effty) (effs))
+
+(*
 and print_cty (ps, Cty (vty, eff_sig)) ppf =
   let print_effty (eff, (in_ty, out_ty)) ppf =
     Print.print ppf "@[<h>%t:%t ->@ %t@]"
@@ -147,6 +148,6 @@ and print_cty (ps, Cty (vty, eff_sig)) ppf =
     Print.print ppf "@[<hov>%t!{%t}@]"
       (print_vty (ps, vty))
       (Print.sequence "; " (print_effty) (Assoc.to_list eff_sig))
-
+*)
 
 (* let print_beautiful sch = print (beautify sch) *)

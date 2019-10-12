@@ -69,6 +69,9 @@ let rec ceval state c =
   | Core.LetRec (defs, c) ->
       let state = extend_let_rec state (Assoc.of_list defs) in
       ceval state c
+  | Core.Effect (eff, arg) ->
+      let v = veval state arg in
+      V.Call (eff, v, fun r -> V.Value r)
   | Core.Check c ->
       let r = ceval state c in
       Print.check ~loc:Location.unknown "%t" (Value.print_result r) ;
@@ -106,8 +109,6 @@ and veval state e =
   | Core.Variant (lbl, None) -> V.Variant (lbl, None)
   | Core.Variant (lbl, Some e) -> V.Variant (lbl, Some (veval state e))
   | Core.Lambda a -> V.Closure (eval_closure state a)
-  | Core.Effect eff ->
-      V.Closure (fun v -> V.Call (eff, v, fun r -> V.Value r))
   | Core.Handler h -> V.Handler (eval_handler state h)
 
 and eval_handler state

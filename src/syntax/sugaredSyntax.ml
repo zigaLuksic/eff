@@ -20,6 +20,7 @@ and plain_ty =
   | TyArrow of ty * ty  (** [ty1 -> ty2] *)
   | TyTuple of ty list  (** [ty1 * ty2 * ... * tyn] *)
   | TyHandler of ty * ty  (** [ty1 => ty2] *)
+  | TyCty of ty * (effect) list (** [ty!{eff : ty1 -> ty2, ...}] *)
 
 type tydef =
   | TySum of (label, ty option) Assoc.t

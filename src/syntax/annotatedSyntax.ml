@@ -28,7 +28,6 @@ and plain_value =
   | Tuple of value list
   | Variant of label * value option
   | Lambda of abstraction
-  | Effect of effect
   | Handler of handler
 
 (** Impure computations *)
@@ -42,6 +41,7 @@ and plain_computation =
   | Match of value * abstraction list
   | Apply of value * value
   | Handle of value * computation
+  | Effect of effect * value
   | Check of computation
 
 (** Handler definitions *)
@@ -104,7 +104,11 @@ let rec print_computation ?max_level c ppf =
         (Print.sequence " | " let_abstraction lst)
         (print_computation c)
   | LetRec (lst, c) -> print "let rec ... in %t" (print_computation c)
-  | Check c -> print "check %t" (print_computation c)
+  | Check c -> print "check %t" (print_computation c)  
+  | Effect (eff, arg) -> 
+      print ~at_level:1 "%t @[<hov>%t@]"
+        (CoreTypes.Effect.print eff)
+        (print_value arg)
 
 and print_value ?max_level e ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
@@ -125,7 +129,6 @@ and print_value ?max_level e ppf =
       print "{effect_clauses = %t; value_clause = (%t)}"
         (Print.sequence " | " effect_clause (Assoc.to_list h.effect_clauses))
         (abstraction h.value_clause)
-  | Effect eff -> print "%t" (CoreTypes.Effect.print eff)
 
 and abstraction (p, c) ppf =
   Format.fprintf ppf "%t -> %t" (print_pattern p) (print_computation c)

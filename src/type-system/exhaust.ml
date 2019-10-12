@@ -260,6 +260,7 @@ let check_comp c =
         List.iter (fun (_, c) -> check c) lst
     | Syntax.Apply _ -> ()
     | Syntax.Handle (_, c) -> check c
+    | Syntax.Effect _ -> () 
     | Syntax.Check c -> check c
   in
   check c

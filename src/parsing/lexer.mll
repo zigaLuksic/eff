@@ -73,9 +73,9 @@ let float =
   (('.' ['0'-'9' '_']*) (['e' 'E'] ['+' '-']? ['0'-'9'] ['0'-'9' '_']*)? |
    ('.' ['0'-'9' '_']*)? (['e' 'E'] ['+' '-']? ['0'-'9'] ['0'-'9' '_']*))
 
-let operatorchar = ['!' '$' '%' '&' '*' '+' '-' '.' '/' ':' '.' '<' '=' '>' '?' '@' '^' '|' '~']
+let operatorchar = ['$' '%' '&' '*' '+' '-' '.' '/' ':' '.' '<' '=' '>' '?' '@' '^' '|' '~']
 
-let prefixop = ['~' '?' '!']             operatorchar*
+let prefixop = ['~' '?']             operatorchar*
 let infixop0 = ['=' '<' '>' '|' '&' '$'] operatorchar*
 let infixop1 = ['@' '^']                 operatorchar*
 let infixop2 = ['+' '-']                 operatorchar*
@@ -108,6 +108,7 @@ rule token = parse
   | '\'' lname          { let str = Lexing.lexeme lexbuf in
                           PARAM (String.sub str 1 (String.length str - 1)) }
   | '_'                 { UNDERSCORE }
+  | '!'                 { EXCLAMATION }
   | '('                 { LPAREN }
   | ')'                 { RPAREN }
   | '['                 { LBRACK }
