@@ -30,18 +30,9 @@ let arity = function
   | Tuple n -> n
   | Variant (_, b) -> if b then 1 else 0
 
-(* Removes the top-most [As] pattern wrappers, if present (e.g. [2 as x] -> [2]). *)
-let rec remove_as {it= p} =
-  match p with
-  | Syntax.PAs (p', _) -> remove_as p'
-  | Syntax.PAnnotated (p', _) -> remove_as p'
-  | p -> p
-
 (* Reads constructor description from a pattern, discarding any [Syntax.PAs] layers. *)
 let rec cons_of_pattern {it= p; at= loc} =
   match p with
-  | Syntax.PAs (p, _) -> cons_of_pattern p
-  | Syntax.PAnnotated (p, _) -> cons_of_pattern p
   | Syntax.PTuple lst -> Tuple (List.length lst)
   | Syntax.PVariant (lbl, opt) -> Variant (lbl, opt <> None)
   | Syntax.PConst c -> Const c
@@ -119,7 +110,7 @@ let find_constructors lst =
 let specialize_vector ~loc con = function
   | [] -> None
   | p1 :: lst -> (
-    match (con, remove_as p1) with
+    match (con, p1.it) with
     | Tuple _, Syntax.PTuple l -> Some (l @ lst)
     | Variant (lbl, _), Syntax.PVariant (lbl', opt) when lbl = lbl' -> (
       match opt with Some p -> Some (p :: lst) | None -> Some lst )
@@ -144,7 +135,7 @@ let rec default = function
   | [] -> []
   | [] :: lst -> default lst (* Only for completeness. *)
   | (p :: ps) :: lst -> (
-    match remove_as p with
+    match p.it with
     | Syntax.PNonbinding | Syntax.PVar _ -> ps :: default lst
     | _ -> default lst )
 

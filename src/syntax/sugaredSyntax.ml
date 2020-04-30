@@ -31,8 +31,6 @@ type pattern = plain_pattern located
 
 and plain_pattern =
   | PVar of variable
-  | PAnnotated of pattern * ty
-  | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
   | PConst of Const.t

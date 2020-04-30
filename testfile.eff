@@ -1,0 +1,12 @@
+
+effect Ping : int -> bool
+
+let h : (unit!{Ping} => bool!{}) = handler
+  | effect Ping x k -> true
+  | val x -> false
+
+let test1 = with h handle !Ping 2; ()
+
+let f : int -> int!{} = fun x -> x
+
+let (g : int -> int!{} ) x = 1

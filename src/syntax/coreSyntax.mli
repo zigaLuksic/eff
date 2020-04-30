@@ -8,7 +8,6 @@ type label = CoreTypes.Label.t
 
 type pattern =
   | PVar of variable
-  | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
   | PConst of Const.t

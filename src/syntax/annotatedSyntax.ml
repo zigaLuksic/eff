@@ -11,8 +11,6 @@ type pattern = plain_pattern located
 
 and plain_pattern =
   | PVar of variable
-  | PAnnotated of pattern * Type.vty
-  | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
   | PConst of Const.t
@@ -59,9 +57,6 @@ let rec print_pattern ?max_level p ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
   match p.it with
   | PVar x -> print "%t" (CoreTypes.Variable.print x)
-  | PAs (p, x) ->
-      print "%t as %t" (print_pattern p) (CoreTypes.Variable.print x)
-  | PAnnotated (p, ty) -> print_pattern ?max_level p ppf
   | PConst c -> Const.print c ppf
   | PTuple lst -> Print.tuple print_pattern lst ppf
   | PVariant (lbl, None) when lbl = CoreTypes.nil -> print "[]"

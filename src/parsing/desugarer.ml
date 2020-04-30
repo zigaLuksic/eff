@@ -10,8 +10,7 @@ type state =
   { context: (string, CoreTypes.Variable.t) Assoc.t
   ; effect_symbols: (string, CoreTypes.Effect.t) Assoc.t
   ; tyname_symbols: (string, CoreTypes.TyName.t) Assoc.t
-  ; constructors: (string, CoreTypes.Label.t) Assoc.t
-  ; local_type_annotations: (string, CoreTypes.TyParam.t) Assoc.t }
+  ; constructors: (string, CoreTypes.Label.t) Assoc.t }
 
 let initial_state =
   let list_cons = (CoreTypes.cons_annot, CoreTypes.cons) in
@@ -29,8 +28,7 @@ let initial_state =
   { context= Assoc.empty
   ; effect_symbols= Assoc.empty
   ; tyname_symbols= initial_types
-  ; constructors= Assoc.of_list [list_cons; list_nil]
-  ; local_type_annotations= Assoc.empty }
+  ; constructors= Assoc.of_list [list_cons; list_nil] }
 
 let add_loc t loc = {it= t; at= loc}
 
@@ -82,7 +80,6 @@ let rec desugar_vtype type_sbst state =
   desugar_vty state
 
 and desugar_ctype type_sbst state ty =
-  let loc = ty.at in
   match ty.it with
   | Sugared.TyCty (vty, effs) ->
       let state', vty' = desugar_vtype type_sbst state vty in
@@ -90,8 +87,9 @@ and desugar_ctype type_sbst state ty =
       (state'', T.Cty(vty', effs'))
   | Sugared.TyParam _ | Sugared.TyArrow _ | Sugared.TyTuple _ 
   | Sugared.TyHandler _ | Sugared.TyApply _ ->
-      Error.typing ~loc
-        "Expected a computation type, but a value type was given."
+      (* Auto-transform to pure computation type *)
+      let state', vty' = desugar_vtype type_sbst state ty in
+      (state', T.Cty(vty', []))
 
 (** [free_type_params t] returns all free type params in [t]. *)
 let free_type_params t =
@@ -195,23 +193,6 @@ let desugar_pattern state ?(initial_forbidden = []) p =
       | Sugared.PVar x ->
           let x = new_var x in
           (state, Untyped.PVar x)
-      | Sugared.PAnnotated (p, t) ->
-          let bind bound_ps p =
-            match Assoc.lookup p bound_ps with
-            | Some ty_param -> bound_ps
-            | None -> Assoc.update p (Type.fresh_ty_param ()) bound_ps
-          in
-          let free_params = free_type_params t in
-          let bound_params = state.local_type_annotations in
-          let bound_params' = List.fold_left bind bound_params free_params in
-          let state' = {state with local_type_annotations= bound_params'} in
-          let state'', p' = desugar_pattern state' p in
-          let state''', t' = desugar_vtype bound_params' state'' t in
-          (state''', Untyped.PAnnotated (p', t'))
-      | Sugared.PAs (p, x) ->
-          let x = new_var x in
-          let state', p' = desugar_pattern state p in
-          (state', Untyped.PAs (p', x))
       | Sugared.PTuple ps ->
           let state', ps' = fold_map desugar_pattern state ps in
           (state', Untyped.PTuple ps')
@@ -242,19 +223,15 @@ let rec desugar_expression state {it= t; at= loc} =
       | Some n -> (state, [], Untyped.Var n)
       | None -> Error.typing ~loc "Variable [%s] is unknown." x )
     | Sugared.Const k -> (state, [], Untyped.Const k)
-    | Sugared.Annotated (t, ty) ->
-        let bind bound_ps p =
-          match Assoc.lookup p bound_ps with
-          | Some ty_param -> bound_ps
-          | None -> Assoc.update p (Type.fresh_ty_param ()) bound_ps
-        in
-        let free_params = free_type_params ty in
-        let bound_params = state.local_type_annotations in
-        let bound_params' = List.fold_left bind bound_params free_params in
-        let state' = {state with local_type_annotations= bound_params'} in
-        let state'', w, e = desugar_expression state' t in
-        let state''', ty' = desugar_vtype bound_params' state'' ty in
-        (state''', w, Untyped.VAnnotated (e, ty'))
+    | Sugared.Annotated (t, ty) -> (
+        match free_type_params ty with 
+        | _ :: _ -> 
+            Error.syntax ~loc 
+              "EEFF currently does not support type parameters outside type definitions."
+        | [] ->
+            let state', w, e = desugar_expression state t in
+            let state'', ty' = desugar_vtype Assoc.empty state' ty in
+            (state'', w, Untyped.VAnnotated (e, ty')) )
     | Sugared.Lambda a ->
         let state', a' = desugar_abstraction state a in
         (state', [], Untyped.Lambda a')
@@ -322,6 +299,15 @@ and desugar_computation state {it= t; at= loc} =
         let state', w1, e1 = desugar_expression state t1 in
         let state'', w2, e2 = desugar_expression state' t2 in
         (state'', w1 @ w2, Untyped.Apply (e1, e2))
+    | Sugared.Annotated (t, ty) -> (
+        match free_type_params ty with 
+        | _ :: _ -> 
+            Error.syntax ~loc 
+              "EEFF currently does not support type parameters outside type definitions."
+        | [] ->
+            let state', c = desugar_computation state t in
+            let state'', ty' = desugar_ctype Assoc.empty state' ty in
+            (state'', [], Untyped.CAnnotated (c, ty')) )
     | Sugared.Effect (eff, t) -> (
       match Assoc.lookup eff state.effect_symbols with
       | Some eff' ->
@@ -383,9 +369,9 @@ and desugar_computation state {it= t; at= loc} =
         (state, [], Untyped.LetRec (defs', c))
     (* The remaining cases are expressions, which we list explicitly to catch any
        future changes. *)
-    | Sugared.Var _ | Sugared.Const _ | Sugared.Annotated _ | Sugared.Tuple _
-     | Sugared.Variant _ | Sugared.Lambda _
-     |Sugared.Function _ | Sugared.Handler _ ->
+    | Sugared.Var _ | Sugared.Const _ | Sugared.Tuple _
+    | Sugared.Variant _ | Sugared.Lambda _
+    | Sugared.Function _ | Sugared.Handler _ ->
         let state', w, e = desugar_expression state {it= t; at= loc} in
         (state', w, Untyped.Value e)
   in

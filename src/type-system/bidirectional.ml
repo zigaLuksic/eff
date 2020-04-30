@@ -60,14 +60,6 @@ let rec pattern_check ctx p ty =
   let loc = p.at in
   match p.it with
   | Syntax.PVar x -> Assoc.of_list [(x, ty)]
-  | Syntax.PAnnotated (p, ann_ty) ->
-      if vtypes_match ty ann_ty then pattern_check ctx p ann_ty else
-        Error.typing ~loc 
-          ( "Pattern is expected to be of type [%t] but is annotated with"
-          ^^ " type [%t]." )
-          (Type.print_vty ([], ty)) (Type.print_vty ([], ann_ty))
-  | Syntax.PAs (p, x) ->
-      Assoc.update x ty (pattern_check ctx p ty)
   | Syntax.PNonbinding -> Assoc.empty
   | Syntax.PConst const ->
       let real_ty = Type.Basic (Const.infer_ty const) in

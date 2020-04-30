@@ -18,9 +18,6 @@ exception PatternMatch of Location.t
 let rec extend_value p v state =
   match (p, v) with
   | Core.PVar x, v -> update x v state
-  | Core.PAs (p, x), v ->
-      let state = extend_value p v state in
-      update x v state
   | Core.PNonbinding, _ -> state
   | Core.PTuple ps, Value.Tuple vs ->
       List.fold_right2 extend_value ps vs state

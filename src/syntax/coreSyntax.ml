@@ -10,7 +10,6 @@ type label = CoreTypes.Label.t
 
 type pattern =
   | PVar of variable
-  | PAs of pattern * variable
   | PTuple of pattern list
   | PVariant of label * pattern option
   | PConst of Const.t
@@ -88,8 +87,6 @@ and computation_remove_annotations c =
 and pattern_remove_annotations p =
   match p.it with
   | Ann.PVar var -> PVar var
-  | Ann.PAnnotated (p, ty) -> pattern_remove_annotations p
-  | Ann.PAs (p, var) -> PAs (pattern_remove_annotations p, var)
   | Ann.PTuple ps -> PTuple (left_to_right_map pattern_remove_annotations ps)
   | Ann.PVariant (lbl, None) -> PVariant (lbl, None)
   | Ann.PVariant (lbl, Some p) -> 
@@ -110,8 +107,6 @@ let rec print_pattern ?max_level p ppf =
   let print ?at_level = Print.print ?max_level ?at_level ppf in
   match p with
   | PVar x -> print "%t" (CoreTypes.Variable.print x)
-  | PAs (p, x) ->
-      print "%t as %t" (print_pattern p) (CoreTypes.Variable.print x)
   | PConst c -> Const.print c ppf
   | PTuple lst -> Print.tuple print_pattern lst ppf
   | PVariant (lbl, None) when lbl = CoreTypes.nil -> print "[]"
