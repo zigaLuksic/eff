@@ -3,8 +3,6 @@
 
   let reserved = Assoc.of_list [
     ("and", AND);
-    ("as", AS);
-    ("asr", ASR);
     ("begin", BEGIN);
     ("check", CHECK);
     ("effect", EFFECT);
@@ -18,12 +16,7 @@
     ("handler", HANDLER);
     ("if", IF);
     ("in", IN);
-    ("land", LAND);
     ("let", LET);
-    ("lor", LOR);
-    ("lsl", LSL);
-    ("lsr", LSR);
-    ("lxor", LXOR);
     ("match", MATCH);
     ("mod", MOD);
     ("of", OF);
@@ -32,6 +25,7 @@
     ("then", THEN);
     ("true", BOOL true);
     ("type", TYPE);
+    ("val", VAL);
     ("with", WITH)
   ]
 
@@ -75,7 +69,7 @@ let float =
 
 let operatorchar = ['$' '%' '&' '*' '+' '-' '.' '/' ':' '.' '<' '=' '>' '?' '@' '^' '|' '~']
 
-let prefixop = ['~' '?']             operatorchar*
+let prefixop = ['~' '?']                 operatorchar*
 let infixop0 = ['=' '<' '>' '|' '&' '$'] operatorchar*
 let infixop1 = ['@' '^']                 operatorchar*
 let infixop2 = ['+' '-']                 operatorchar*
@@ -104,9 +98,9 @@ rule token = parse
                         }
   | uname               { UNAME (Lexing.lexeme lexbuf) }
   | '!' uname           { let str = Lexing.lexeme lexbuf in
-                          EFFNAME (String.sub str 1 (String.length str - 1)) }  
+                          EFFNAME (String.sub str 1 (String.length str - 1)) }
   | '\'' lname          { let str = Lexing.lexeme lexbuf in
-                          PARAM (String.sub str 1 (String.length str - 1)) }
+                        PARAM (String.sub str 1 (String.length str - 1)) }  
   | '_'                 { UNDERSCORE }
   | '!'                 { EXCLAMATION }
   | '('                 { LPAREN }

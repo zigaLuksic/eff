@@ -24,14 +24,15 @@
 %token COLON COMMA SEMI SEMISEMI EQUAL CONS EXCLAMATION
 %token BEGIN END
 %token <string> LNAME
-%token UNDERSCORE AS
+%token UNDERSCORE
 %token <int> INT
 %token <string> STRING
 %token <bool> BOOL
 %token <float> FLOAT
 %token <SugaredSyntax.label> UNAME EFFNAME
 %token <SugaredSyntax.typaram> PARAM
-%token TYPE ARROW HARROW OF EFFECT
+%token TYPE ARROW HARROW OF 
+%token EFFECT VAL
 %token EXTERNAL
 %token MATCH WITH FUNCTION HASH
 %token LET REC AND IN
@@ -39,10 +40,8 @@
 %token IF THEN ELSE
 %token HANDLER AT HANDLE
 %token PLUS STAR MINUS MINUSDOT
-%token LSL LSR ASR
 %token MOD OR
 %token AMPER AMPERAMPER
-%token LAND LOR LXOR
 %token <string> PREFIXOP INFIXOP0 INFIXOP1 INFIXOP2 INFIXOP3 INFIXOP4
 %token CHECK
 %token QUIT USE HELP
@@ -57,8 +56,8 @@
 %right INFIXOP1 AT
 %right CONS
 %left  INFIXOP2 PLUS MINUS MINUSDOT
-%left  INFIXOP3 STAR MOD LAND LOR LXOR
-%right INFIXOP4 LSL LSR ASR
+%left  INFIXOP3 STAR MOD
+%right INFIXOP4
 
 %start <Commands.t list> commands
 
@@ -106,9 +105,7 @@ plain_topdef:
     { Commands.External (x, t, n) }
   | EFFECT eff = effect COLON t1 = ty_apply ARROW t2 = ty
     { Commands.DefEffect (eff, (t1, t2))}
-  | EFFECT eff = effect COLON t = ty
-    { let unit_loc = Location.make $startpos(t) $endpos(t) in
-      Commands.DefEffect (eff, ({it= TyTuple []; at= unit_loc}, t))}
+
 
 (* Toplevel directive If you change these, make sure to update lname as well,
    or a directive might become a reserved word. *)
@@ -192,8 +189,8 @@ plain_app_term:
       | Variant (lbl, None), [t] -> Variant (lbl, Some t)
       | Variant (lbl, _), _ -> 
           Error.syntax ~loc:(t.at) 
-          ("Constructor [%s] applied to too many arguments. "
-          ^^"Constructors accept at most one argument.") lbl
+          ("Constructor [%s] applied to multiple arguments, "
+          ^^"but constructors accept at most one argument. Please provide parentheses.") lbl
       | _, _ ->
         let apply t1 t2 = {it= Apply(t1, t2); at= Location.union [t1.at; t2.at]} in
         (List.fold_left apply t ts).it
@@ -204,8 +201,8 @@ plain_app_term:
       | [t] -> Effect (eff, t)
       | _ -> 
           Error.syntax ~loc:(Location.make $startpos(eff) $endpos(eff)) 
-          ("Effect [%s] applied to too many arguments. "
-          ^^"Effects accept at most one argument.") eff
+          ("Effect [%s] applied to multiple arguments, "
+          ^^"but effect invocations accept at most one argument. Please provide parentheses.") eff
     }
   | t = plain_prefix_term
     { t }
@@ -228,9 +225,6 @@ plain_simple_term:
     { Variant (lbl, None) }
   | cst = const_term
     { Const cst }
-  | eff = invoked_effect
-    { let unit_loc = Location.make $startpos(eff) $endpos(eff) in
-      Effect (eff, {it= Tuple []; at= unit_loc})}
   | LBRACK ts = separated_list(SEMI, comma_term) RBRACK
     {
       let nil = {it= Variant (CoreTypes.nil_annot, None); at= Location.make $endpos $endpos} in
@@ -275,8 +269,6 @@ lambdas0(SEP):
     { t }
   | p = simple_pattern t = lambdas0(SEP)
     { {it= Lambda (p, t); at= Location.make $startpos $endpos} }
-  | COLON ty = ty SEP t = term
-    { {it= Annotated (t, ty); at= Location.make $startpos $endpos} }
 
 lambdas1(SEP):
   | p = simple_pattern t = lambdas0(SEP)
@@ -286,9 +278,11 @@ let_def:
   | p = pattern EQUAL t = term
     { (p, t) }
   | p = pattern COLON ty = ty EQUAL t = term
-    { (p, {it= Annotated(t, ty); at= Location.make $startpos $endpos}) }
+    { (p, {it= Annotated(t, ty); at= t.at}) }
   | x = mark_position(ident) t = lambdas1(EQUAL)
     { ({it= PVar x.it; at= x.at}, t) }
+  | LPAREN x = mark_position(ident) COLON ty = ty RPAREN t = lambdas1(EQUAL)
+    { ({it= PVar x.it; at= x.at}, {it= Annotated(t, ty); at= t.at}) }
 
 let_rec_def:
   | LPAREN f = ident COLON ty = ty RPAREN t = lambdas0(EQUAL)
@@ -301,15 +295,13 @@ plain_handler_clause:
   | EFFECT eff = effect  k = simple_pattern ARROW t = term
     { let unit_loc = Location.make $startpos(eff) $endpos(eff) in
       EffectClause (eff, ({it= PTuple []; at= unit_loc}, k, t)) }
-  | c = function_case
+  | VAL c = function_case
     { ReturnClause c }
 
 pattern: mark_position(plain_pattern) { $1 }
 plain_pattern:
   | p = comma_pattern
     { p.it }
-  | p = pattern AS x = lname
-    { PAs (p, x) }
 
 comma_pattern: mark_position(plain_comma_pattern) { $1 }
 plain_comma_pattern:
@@ -353,8 +345,6 @@ plain_simple_pattern:
     }
   | LPAREN RPAREN
     { PTuple [] }
-  | LPAREN p = pattern COLON t = ty RPAREN
-    { PAnnotated (p, t) }
   | LPAREN p = pattern RPAREN
     { p.it }
 
@@ -418,18 +408,7 @@ ident:
     { op }
   | MOD
     { "mod" }
-  | LAND
-    { "land" }
-  | LOR
-    { "lor" }
-  | LXOR
-    { "lxor" }
-  | LSL
-    { "lsl" }
-  | LSR
-    { "lsr" }
-  | ASR
-    { "asr" }
+
 
 %inline prefixop:
   | op = PREFIXOP

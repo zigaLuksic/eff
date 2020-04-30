@@ -19,3 +19,5 @@ tests/errors/*.eff.out
 # Silly Mac OS X files
 .DS_Store
 
+# VSCode configurations files
+.vscode
