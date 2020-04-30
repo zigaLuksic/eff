@@ -133,9 +133,18 @@ let rec print_vty (ps, vty) ppf =
   print_vty vty ppf
 
 and print_cty (ps, Cty (vty, effs)) ppf =
+  match effs with
+  | [] -> (* Remove printing sig from pure computations *)
+      Print.print ppf "@[<hov>%t@]"
+        (print_vty (ps, vty))
+  | _ ->
+      Print.print ppf "@[<hov>(%t!%t)@]"
+        (print_vty (ps, vty))
+        (print_sig (effs))
+
+and print_sig (effs) ppf =
   let print_effty eff ppf = CoreTypes.Effect.print eff ppf in
-  Print.print ppf "@[<hov>(%t!{%t})@]"
-    (print_vty (ps, vty))
+  Print.print ppf "@[<hov>{%t}@]"
     (Print.sequence ", " (print_effty) (effs))
 
 (*

@@ -57,11 +57,10 @@ let rec desugar_vtype type_sbst state =
         let state', t' = tyname_to_symbol state t in
         let state'', tys' = fold_map desugar_vty state' tys in
         (state'', T.Apply (t', tys'))
-    | Sugared.TyParam t -> 
-        Error.syntax ~loc "EEFF currently does not support type parameters."
-        (* match Assoc.lookup t type_sbst with
+    | Sugared.TyParam t -> (
+        match Assoc.lookup t type_sbst with
         | None -> Error.syntax ~loc "Unbound type parameter '%s." t
-        | Some p -> (state, T.TyParam p) ) *)
+        | Some p -> (state, T.TyParam p) )
     | Sugared.TyArrow (t1, t2) ->
         let state', t1' = desugar_vty state t1 in
         let state'', t2' = desugar_ctype type_sbst state' t2 in

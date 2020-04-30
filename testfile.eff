@@ -1,4 +1,6 @@
 
+type ('a, 'b) llist = A of 'a * ('a, 'b) llist | B of 'b
+
 effect Ping : int -> bool
 
 let h : (unit!{Ping} => bool!{}) = handler
@@ -10,3 +12,17 @@ let test1 = with h handle !Ping 2; ()
 let f : int -> int!{} = fun x -> x
 
 let (g : int -> int!{} ) x = 1
+
+let rec (pinger : int list -> unit!{Ping}) = function
+  | [] -> ()
+  | x :: xs -> !Ping x; pinger xs  
+
+effect Get : unit -> int
+effect Set : int -> unit
+
+let state_handler : int!{Get, Set} => int -> (int * int) = handler
+  | effect Get () k -> (fun s -> k s s)
+  | effect Set s k -> (fun _ -> k () s)
+  | val x -> (fun s -> (x, s))
+
+let test2 = with state_handler handle let x : int!{Set, Get} = !Get () in !Set x

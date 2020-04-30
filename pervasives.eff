@@ -1,12 +1,8 @@
-(* This is the equivalent of Haskell prelude or Ocaml pervasives,
-   with some list handling functions thrown in. *)
-
-let continue x = x
 
 (* Top level effects. *)
 effect Print : string -> unit
 
-effect Read : string
+effect Read : unit -> string
 
 effect Raise : string -> empty
 
@@ -15,9 +11,13 @@ effect RandomInt : int -> int
 effect RandomFloat: float -> float
 
 (* Integers and Floats *)
-external ( = ) : 'a -> 'a -> bool = "="
+external ( = ) : int -> int -> bool = "="
 
-external ( < ) : 'a -> 'a -> bool = "<"
+external ( < ) : int -> int -> bool = "<"
+
+external ( =. ) : float -> float -> bool = "="
+
+external ( <. ) : float -> float -> bool = "<"
 
 external infinity : float = "infinity"
 
@@ -25,19 +25,14 @@ external neg_infinity : float = "neg_infinity"
 
 external nan : float = "nan"
 
-let absurd void = match void with;;
-
-effect DivisionByZero : empty
-
 effect InvalidArgument : string -> empty
 
 effect Failure : string -> empty
 
-let failwith msg = absurd (perform (Failure msg)) ;;
+effect AssertionFault : unit -> empty
 
-effect AssertionFault : empty
-
-let assert b = if b then () else absurd (perform AssertionFault) ;;
+let assert : bool -> unit!{AssertionFault} =
+  fun b -> if b then () else match (!AssertionFault ()) with;;
 
 external ( ~- ) : int -> int = "~-"
 
@@ -48,9 +43,6 @@ external ( * ) : int -> int -> int = "*"
 external ( - ) : int -> int -> int = "-"
 
 external ( mod ) : int -> int -> int = "mod"
-let (mod) m n = match n with
-  | 0 -> absurd (perform DivisionByZero)
-  | n -> m mod n
 
 external ( ~-. ) : float -> float = "~-."
 
@@ -65,9 +57,6 @@ external ( /. ) : float -> float -> float = "/."
 external ( ** ) : int -> int -> int = "**"
 
 external ( / ) : int -> int -> int = "/"
-let ( / ) m n = match n with
-  | 0 -> absurd (perform DivisionByZero)
-  | n -> (/) m n
 
 external exp : float -> float = "exp"
 
@@ -107,21 +96,32 @@ external string_of_int : int -> string  = "string_of_int"
 external to_string : 'a -> string  = "to_string"  (*Unsafe for compilation*)
 
 (* Booleans *)
-let not x = if x then false else true
+let (not : bool -> bool) x = if x then false else true
 
-let (>) x y = y < x
+let ((>) : int -> int -> bool) x y = y < x
 
-let (<=) x y =
+
+let ((<=) : int -> int -> bool) x y =
   let lt = x < y in
   let eq = x = y in
   lt || eq
 
-let (>=) x y = (y <= x)
+let ((>=) : int -> int -> bool) x y = (y <= x)
 
-let (<>) x y = not (x = y)
+let ((<>) : int -> int -> bool) x y = not (x = y)
 
-let (!=) x y = not (x = y)
+let ((>.) : float -> float -> bool) x y = y <. x
 
+let ((<=.) : float -> float -> bool) x y =
+  let lt = x <. y in
+  let eq = x =. y in
+  lt || eq
+
+let ((>=.) : float -> float -> bool) x y = (y <=. x)
+
+let ((<>.) : float -> float -> bool) x y = not (x =. y)
+
+(*
 (* Lists *)
 type 'a option = None | Some of 'a
 
@@ -268,4 +268,5 @@ let state initial = handler
   | effect Lookup k -> (fun s -> continue k s s)
   | effect (Update s) k -> (fun _ -> continue k () s)
   | finally f -> f initial;;
+*)
 *)

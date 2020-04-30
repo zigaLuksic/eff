@@ -72,4 +72,6 @@ val print_vty : CoreTypes.TyParam.t list * vty -> Format.formatter -> unit
 
 val print_cty : CoreTypes.TyParam.t list * cty -> Format.formatter -> unit
 
+val print_sig : eff_sig -> Format.formatter -> unit
+
 (* val print_beautiful : CoreTypes.TyParam.t list * ty -> Format.formatter -> unit *)

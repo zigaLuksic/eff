@@ -10,11 +10,11 @@ module Effect = Symbol.Make (Symbol.String)
 module Label = Symbol.Make (Symbol.String)
 
 (** Variants for the built-in list type *)
-let nil_annot = "$0nil"
+let nil_annot = "[]"
 
 let nil = Label.fresh nil_annot
 
-let cons_annot = "$1cons"
+let cons_annot = "::"
 
 let cons = Label.fresh cons_annot
 
