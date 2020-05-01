@@ -84,7 +84,7 @@ let transparent ~loc ty_name =
 let ty_apply ~loc ty_name lst =
   let xs, ty = lookup_tydef ~loc ty_name in
   if List.length xs <> List.length lst then
-    Error.typing ~loc "Type constructors [%t] should be applied to %d arguments."
+    Error.typing ~loc "Type constructors `%t` should be applied to %d arguments."
       (CoreTypes.TyName.print ty_name)
       (List.length xs)
   else
