@@ -98,11 +98,11 @@ let toplevel execute_source state =
   Format.fprintf !Config.output_formatter "      ___ ___ ___ ___@." ;
   Format.fprintf !Config.output_formatter "     /__ /__ /__ /__@." ;
   Format.fprintf !Config.output_formatter "    /__ /__ /   /@.@." ;
-  Format.fprintf !Config.output_formatter "  ~ alpha version ~@." ;
+  Format.fprintf !Config.output_formatter "  ~ alpha version ~@.@." ;
   Format.fprintf !Config.output_formatter
     "[Type %s to exit or #help;; for help.]@." eof ;
   Format.fprintf !Config.output_formatter 
-    ( "Warning:@.  @[<hov>parametrised data types treat parameters as a covariant position. @,"
+    ( "Warning:@.  @[<hov>Parametrised data types treat all type parameters as a covariant position. @,"
     ^^ "This can lead to errors when subtyping. Avoid type parameters if possible.@.@]" );
   let state = ref state in
   Sys.catch_break true ;

@@ -58,3 +58,5 @@ let leaf : int -> int tree = fun x -> Node (Empty, x, Empty)
 let test_tree : int tree = (Node (leaf 1, 5, Node (leaf 4, 2, leaf 0)))
 
 let test4 = with yield_sum handle tree_yield test_tree
+
+let test5 : (int!{Undefined}) = 1

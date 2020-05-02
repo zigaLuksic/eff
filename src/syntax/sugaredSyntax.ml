@@ -6,6 +6,8 @@ type variable = string
 
 type effect = string
 
+type theory = string
+
 type label = string
 
 type tyname = string
@@ -20,7 +22,8 @@ and plain_ty =
   | TyArrow of ty * ty  (** [ty1 -> ty2] *)
   | TyTuple of ty list  (** [ty1 * ty2 * ... * tyn] *)
   | TyHandler of ty * ty  (** [ty1 => ty2] *)
-  | TyCTySig of ty * (effect) list (** [ty!{eff : ty1 -> ty2, ...}] *)
+  | TyCTySig of ty * effect list (** [ty!{eff1, eff2, ...}] *)
+  | TyCTyTheory of ty * theory (** [ty!{theory}] *)
 
 type tydef =
   | TySum of (label, ty option) Assoc.t
@@ -71,3 +74,24 @@ and handler =
 and abstraction = pattern * term
 
 and abstraction2 = pattern * pattern * term
+
+(* Templates *)
+
+type varty =
+  | ValueTy of ty
+  | TemplateTy of ty
+
+type tctx = ((string * varty) list) located
+
+type template = plain_template located
+
+and plain_template =
+  | TLet of (pattern * term) list * template
+  | TLetRec of (variable * ty * term) list * template
+  | TMatch of term * (pattern * template) list
+  | TConditional of term * template * template
+  | TApply of variable * term
+  | TEffect of effect * term * variable * template
+
+(** Equations *)
+type equation = tctx * template * template

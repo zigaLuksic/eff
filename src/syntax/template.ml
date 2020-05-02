@@ -6,24 +6,21 @@ type variable = CoreTypes.Variable.t
 
 type effect = CoreTypes.Effect.t
 
-type var =
-  | ValueVar of Type.vty
-  | TemplateVar of Type.vty
+type varty =
+  | ValueTy of Type.vty
+  | TemplateTy of Type.vty
 
-type ctx = (CoreTypes.TyName.t, var) Assoc.t
+type ctx = (CoreTypes.Variable.t, varty) Assoc.t located
 
 (** Templates *)
 type t = plain_t located
 
 and plain_t =
-  | TPlaceholder
-  | TLet of (Ann.pattern * Ann.computation) list * t
-  | TMatch of Ann.value * tabstraction list
-  | TApply of variable * Ann.value
-  | TEffect of effect * Ann.value
-
-(** Abstractions that take one argument. *)
-and tabstraction = Ann.pattern * t
+  | Let of (Ann.pattern * Ann.computation) list * t
+  | LetRec of (variable * Type.vty * (Ann.pattern * Ann.computation)) list * t
+  | Match of Ann.value * (Ann.pattern * t) list
+  | Apply of variable * Ann.value
+  | Effect of effect * Ann.value * variable * t
 
 (** Equations *)
 type equation = ctx * t * t

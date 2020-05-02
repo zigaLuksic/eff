@@ -20,7 +20,7 @@ let extend_ctx ctx binds =
     (fun acc (x, ty) -> Ctx.extend acc x (Ctx.generalize ctx true ty)) 
     ctx binds
 
-(* ---------- Subtyping ---------- *)
+(* ========== Subtyping ========== *)
 
 let rec vsubtype ty1 ty2 ~loc ~ctx =
   match ty1, ty2 with
@@ -67,7 +67,7 @@ and eqs_subtype eqs1 eqs2 =
   List.for_all (fun x -> List.mem x eqs2) eqs1 
 
 
-(* ---------- Patterns ---------- *)
+(* ========== Patterns ========== *)
 
 let rec pattern_check ctx p ty =
   let loc = p.at in
@@ -143,7 +143,7 @@ let rec pattern_check ctx p ty =
               (Type.print_vty ([], ty)))
       end
 
-(* ---------- Values ---------- *)
+(* ========== Values ========== *)
 
 and value_check ctx v ty =
   let loc = v.at in
@@ -318,7 +318,7 @@ and value_synth ctx v =
       Error.typing ~loc 
         ( "Cannot synthesize types for handlers. Please provide annotations." )
 
-(* ---------- Computations ---------- *)
+(* ========== Computations ========== *)
   
 and computation_check ctx c cty =
   let loc = c.at in
@@ -343,7 +343,7 @@ and computation_check ctx c cty =
   | Syntax.Let (defs, c) ->
       let (_, effs, eqs) = deconstruct_cty ~loc ~ctx cty in
       let def_checker binds (p, c) =
-        let synth_ty = computation_synth ctx c in
+        let synth_ty = computation_synth_check_effs ctx c effs in
         let (vty, synth_effs, synth_eqs) = deconstruct_cty ~loc ~ctx synth_ty in
         let b = pattern_check ctx p vty in
         if not (eff_subtype synth_effs effs) then
@@ -448,7 +448,7 @@ and computation_synth ctx c =
             (Type.print_vty ([], real_ty)) )
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
-        (* WARNING!! DOES NOT CHECK SIGNATURE MATCH! *)
+        (* Warning: only lets true pure computations *)
         let synth_cty = computation_synth ctx c in
         let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
         if effs <> [] then
@@ -499,7 +499,35 @@ and computation_synth ctx c =
       ignore (computation_synth ctx c); Type.CTySig (Type.unit_ty, [])
 
 
-(* ---------- Operation cases ---------- *)
+and computation_synth_check_effs ctx c allowed_effs =
+  (* This is done to improve those pesky nested Let definitions. 
+     The need stems from automatic translation to fine-grained CBV. *)
+  let loc = c.at in
+  match c.it with
+  | Syntax.Let (defs, c) ->
+      let def_checker binds (p, c) =
+        (* Warning: only lets true pure computations *)
+        let synth_cty = computation_synth_check_effs ctx c allowed_effs in
+        let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
+        if not (eff_subtype effs allowed_effs) then
+          Error.typing ~loc:c.at 
+            ("Encountered problem while synthesizing type of `let` "
+              ^^ "definitions (possibly implicit). @,"
+              ^^ "Possible effects are `%t`, @,but a check of an outer `let` "
+              ^^ "block restricted effects to %t. @,"
+              ^^ "Please provide better annotation for the outer `let` code block.")
+            (Type.print_sig effs) (Type.print_sig allowed_effs)
+        else
+        let b = pattern_check ctx p vty in
+        Assoc.concat binds b
+      in
+      let binds = List.fold_left def_checker Assoc.empty defs in
+      computation_synth (extend_ctx ctx binds) c
+  | _ ->
+      computation_synth ctx c
+
+
+(* ========== Operation cases ========== *)
 
 and effect_clauses_check ~loc ctx ops (effs, ty2) =
   let rec checker (eff, (px, pk, c_op)) =
@@ -529,7 +557,7 @@ and effect_clauses_check ~loc ctx ops (effs, ty2) =
       (Type.print_sig handled_effs) (Type.print_sig effs)
 
 
-(* ---------- Top level definitions ---------- *)
+(* ========== Top level definitions ========== *)
 
 let infer_top_comp ctx c =
   let cty = computation_synth ctx c in

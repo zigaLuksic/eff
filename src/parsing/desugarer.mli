@@ -30,3 +30,9 @@ val desugar_tydefs :
   -> (string, SugaredSyntax.typaram list * SugaredSyntax.tydef) Assoc.t
   -> state
      * (CoreTypes.TyName.t, CoreTypes.TyParam.t list * Tctx.tydef) Assoc.t
+
+val desugar_def_theory :
+     state
+  -> (SugaredSyntax.theory * SugaredSyntax.equation list * SugaredSyntax.effect list)
+  -> state
+     * (CoreTypes.Theory.t * Template.equation list * CoreTypes.Effect.t list)
