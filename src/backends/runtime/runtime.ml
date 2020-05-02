@@ -15,7 +15,10 @@ module Backend : BackendSignature.T = struct
 
   (* Processing functions *)
   let process_computation state c (params, cty) =
-    let Type.Cty(vty, _) = cty in
+    let vty = match cty with
+      | Type.CTySig (vty, _) -> vty
+      | Type.CTyTheory (vty, _) -> vty
+    in
     let erased_c = CoreSyntax.computation_remove_annotations c in
     let v = Eval.run state erased_c in
     Format.fprintf !Config.output_formatter "@[- : %t = %t@]@."

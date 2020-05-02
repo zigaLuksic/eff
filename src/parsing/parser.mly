@@ -447,7 +447,7 @@ defined_ty:
 ty: mark_position(plain_ty) { $1 }
 plain_ty:
   | t = ty_apply EXCLAMATION LBRACE effs = separated_list(COMMA, effect) RBRACE
-    { TyCty(t, effs) }
+    { TyCTySig(t, effs) }
   | t1 = ty_apply ARROW t2 = ty
     { TyArrow (t1, t2) }
   | t1 = ty HARROW t2 = ty

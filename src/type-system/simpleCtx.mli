@@ -38,3 +38,7 @@ val generalize : t -> bool -> Type.vty -> ty_scheme
 val infer_effect : t -> CoreSyntax.effect -> (Type.vty * Type.vty) option
 
 val add_effect : t -> CoreSyntax.effect -> Type.vty * Type.vty -> t
+
+val infer_theory : t -> CoreTypes.Theory.t -> (Template.equation list * Type.eff_sig) option
+
+val add_theory : t -> CoreTypes.Theory.t -> (Template.equation list * Type.eff_sig) -> t

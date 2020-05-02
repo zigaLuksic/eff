@@ -6,6 +6,9 @@ module Variable = Symbol.Make (Symbol.String)
 (** effect symbols *)
 module Effect = Symbol.Make (Symbol.String)
 
+(** theory symbols *)
+module Theory = Symbol.Make (Symbol.String)
+
 (** variant labels *)
 module Label = Symbol.Make (Symbol.String)
 

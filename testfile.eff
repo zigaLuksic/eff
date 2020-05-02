@@ -20,7 +20,7 @@ let rec (pinger : int list -> unit!{Ping}) = function
 effect Get : unit -> int
 effect Set : int -> unit
 
-let state_handler : int!{Get, Set} => int -> (int * int) = handler
+let state_handler : int!{Get,Set} => int -> (int * int) = handler
   | effect Get () k -> (fun s -> k s s)
   | effect Set s k -> (fun _ -> k () s)
   | val x -> (fun s -> (x, s))

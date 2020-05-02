@@ -6,8 +6,23 @@ type state = Ctx.t
 
 let initial_state = Ctx.empty
 
+let deconstruct_cty ~ctx ~loc = function
+  | Type.CTySig (vty, effs) -> (vty, effs, [])
+  | Type.CTyTheory (vty, theory) -> (
+      match Ctx.infer_theory ctx theory with
+      | Some (eqs, effs) -> (vty, effs, eqs)
+      | None -> 
+          Error.typing ~loc 
+            ( "Theory `%t` is unknown." ) (CoreTypes.Theory.print theory) )
 
-let rec vsubtype ty1 ty2 ~loc =
+let extend_ctx ctx binds =
+  Assoc.fold_left
+    (fun acc (x, ty) -> Ctx.extend acc x (Ctx.generalize ctx true ty)) 
+    ctx binds
+
+(* ---------- Subtyping ---------- *)
+
+let rec vsubtype ty1 ty2 ~loc ~ctx =
   match ty1, ty2 with
   | Type.TyParam _, _ | _, Type.TyParam _ ->
       Error.typing ~loc 
@@ -18,55 +33,41 @@ let rec vsubtype ty1 ty2 ~loc =
   | Type.Basic x1, Type.Basic x2 -> x1 = x2
   | Type.Apply (name1, tys1), Type.Apply (name2, tys2) ->
       CoreTypes.TyName.compare name1 name2 = 0 
-      && List.for_all2 (vsubtype ~loc) tys1 tys2 
+      && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2 
   | Type.Apply (name, tys), ty -> (
       if Tctx.transparent ~loc:Location.unknown name then
         match Tctx.ty_apply ~loc:Location.unknown name tys with
-        | Tctx.Inline t -> (vsubtype ~loc) t ty
+        | Tctx.Inline t -> vsubtype ~loc ~ctx t ty
         | Tctx.Sum _ -> assert false (* not transparent *)
       else false )
   | ty, Type.Apply (name, tys) -> (
       if Tctx.transparent ~loc:Location.unknown name then
         match Tctx.ty_apply ~loc:Location.unknown name tys with
-        | Tctx.Inline t -> (vsubtype ~loc) ty t
+        | Tctx.Inline t -> vsubtype ~loc ~ctx ty t
         | Tctx.Sum _ -> assert false (* not transparent *)
       else false )
   | Type.Tuple tys1, Type.Tuple tys2 -> 
-      List.for_all2 (vsubtype ~loc) tys1 tys2
+      List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
   | Type.Arrow (in_ty1, out_cty1), Type.Arrow (in_ty2, out_cty2) ->
-      vsubtype ~loc in_ty2 in_ty1 && csubtype ~loc out_cty1 out_cty2     
+      vsubtype ~loc ~ctx in_ty2 in_ty1 && csubtype ~loc ~ctx out_cty1 out_cty2     
   | Type.Handler (in_cty1, out_cty1), Type.Handler (in_cty2, out_cty2) ->
-      csubtype ~loc in_cty2 in_cty1 && csubtype ~loc out_cty1 out_cty2      
+      csubtype ~loc ~ctx in_cty2 in_cty1 && csubtype ~loc ~ctx out_cty1 out_cty2      
   | _, _ -> false
 
-and csubtype cty1 cty2 ~loc =
-  let Type.Cty (ty1, effs1) = cty1 in
-  let Type.Cty (ty2, effs2) = cty2 in
-  vsubtype ~loc ty1 ty2 && eff_subtype effs1 effs2
+and csubtype cty1 cty2 ~loc ~ctx = 
+  let vty1, effs1, eqs1 = deconstruct_cty ~loc ~ctx cty1 in
+  let vty2, effs2, eqs2 = deconstruct_cty ~loc ~ctx cty2 in
+  vsubtype ~loc ~ctx vty1 vty2
+  && eff_subtype effs1 effs2 && eqs_subtype eqs1 eqs2
 
 and eff_subtype effs1 effs2 = 
   List.for_all (fun x -> List.mem x effs2) effs1 
 
-(* and ctypes_match cty1 cty2 =
-  let Type.Cty (ty1, effsig1) = cty1 in
-  let Type.Cty (ty2, effsig2) = cty2 in
-  let rec sig_match = function
-    | [] -> true
-    | eff :: effs -> (
-        match Assoc.lookup eff effsig1, Assoc.lookup eff effsig2 with
-        | None, None -> sig_match effs
-        | None, Some _
-        | Some _, None -> false
-        | Some (ty1, ty2), Some (ty1',ty2') ->
-            vtypes_match ty1 ty2 && vtypes_match ty1' ty2' && sig_match effs)
-  in
-  vtypes_match ty1 ty2
-  && sig_match (Assoc.keys_of effsig1 @ Assoc.keys_of effsig2) *)
+and eqs_subtype eqs1 eqs2 = 
+  List.for_all (fun x -> List.mem x eqs2) eqs1 
 
-let extend_ctx ctx binds =
-  Assoc.fold_left
-    (fun acc (x, ty) -> Ctx.extend acc x (Ctx.generalize ctx true ty)) 
-    ctx binds
+
+(* ---------- Patterns ---------- *)
 
 let rec pattern_check ctx p ty =
   let loc = p.at in
@@ -75,7 +76,7 @@ let rec pattern_check ctx p ty =
   | Syntax.PNonbinding -> Assoc.empty
   | Syntax.PConst const ->
       let real_ty = Type.Basic (Const.infer_ty const) in
-      if vsubtype real_ty ty ~loc then Assoc.empty else
+      if vsubtype ~loc ~ctx real_ty ty  then Assoc.empty else
         Error.typing ~loc 
           ("Constant pattern `%t` is of type `%t` but checked against type `%t`.")
           (Const.print const) (Type.print_vty ([], real_ty))
@@ -104,7 +105,7 @@ let rec pattern_check ctx p ty =
           checker ps tys Assoc.empty
       | _ ->
           (* Catch that unit as well. *)
-          if vsubtype ~loc ty (Type.Tuple []) then Assoc.empty else
+          if vsubtype ~loc ~ctx ty (Type.Tuple []) then Assoc.empty else
           Error.typing ~loc 
             ( "A tuple pattern is checked against an incompatible type of `%t`." )
             (Type.print_vty ([], ty))
@@ -142,13 +143,15 @@ let rec pattern_check ctx p ty =
               (Type.print_vty ([], ty)))
       end
 
+(* ---------- Values ---------- *)
+
 and value_check ctx v ty =
   let loc = v.at in
   match v.it with
   | Syntax.Var x -> 
       (* Could be done via modeswitch but this gives better errors. *)
       let real_ty = Ctx.lookup ~loc ctx x in
-      if vsubtype ~loc real_ty ty then () else
+      if vsubtype ~loc ~ctx real_ty ty then () else
         Error.typing ~loc 
           "Variable `%t` of type `%t` is checked against the type `%t`."
           (CoreTypes.Variable.print x) (Type.print_vty ([], real_ty))
@@ -156,7 +159,7 @@ and value_check ctx v ty =
   | Syntax.Const const -> 
       (* Could be done via modeswitch but this gives better errors. *)
       let real_ty = Type.Basic (Const.infer_ty const) in
-      if vsubtype ~loc real_ty ty then () else
+      if vsubtype ~loc ~ctx real_ty ty then () else
         Error.typing ~loc 
           "Constant `%t` of type `%t` is checked against the type `%t`."
           (Const.print const) (Type.print_vty ([], real_ty))
@@ -182,13 +185,13 @@ and value_check ctx v ty =
           in
           checker vs tys
       | _ ->
-          if vsubtype ~loc ty (Type.Tuple []) then () else 
+          if vsubtype ~loc ~ctx ty (Type.Tuple []) then () else 
           Error.typing ~loc 
             ( "A tuple is checked against the incompatible type `%t`." )
             (Type.print_vty ([], ty))
       end
   | Syntax.VAnnotated (v, ann_ty) ->
-      if vsubtype ~loc ann_ty ty then value_check ctx v ann_ty else
+      if vsubtype ~loc ~ctx ann_ty ty then value_check ctx v ann_ty else
         Error.typing ~loc 
           ( "Value is checked against type `%t` but is annotated with"
           ^^ " the incompatible type `%t`." )
@@ -238,11 +241,13 @@ and value_check ctx v ty =
   | Syntax.Handler { Syntax.effect_clauses= ops; Syntax.value_clause= (p, c) }
     -> (
       match ty with
-      | Type.Handler (ty1, ty2) -> (
-          effect_clauses_check ctx ops (ty1, ty2);
-          let Type.Cty (vty1,_) = ty1 in
+      | Type.Handler (cty1, cty2) -> (
+          let (vty1, effs1, _) = deconstruct_cty ~loc ~ctx cty1 in
+          (* operation cases *)
+          effect_clauses_check ~loc ctx ops (effs1, cty2);
+          (* return case *)
           let binds = pattern_check ctx p vty1 in
-          computation_check (extend_ctx ctx binds) c ty2
+          computation_check (extend_ctx ctx binds) c cty2
           )
       | _ ->
           Error.typing ~loc 
@@ -313,18 +318,19 @@ and value_synth ctx v =
       Error.typing ~loc 
         ( "Cannot synthesize types for handlers. Please provide annotations." )
 
+(* ---------- Computations ---------- *)
   
 and computation_check ctx c cty =
   let loc = c.at in
   match c.it with
   | Syntax.CAnnotated (c, ann_ty) ->
-      if csubtype ~loc ann_ty cty then computation_check ctx c ann_ty else
+      if csubtype ~loc ~ctx ann_ty cty then computation_check ctx c ann_ty else
         Error.typing ~loc 
           ( "Computation is expected to be of type `%t` @,but is annotated with"
           ^^ " type `%t`." )
           (Type.print_cty ([], cty)) (Type.print_cty ([], ann_ty))
-  | Syntax.Value v -> 
-      let Type.Cty (vty, _) = cty in
+  | Syntax.Value v ->
+      let (vty, _, _) = deconstruct_cty ~loc ~ctx cty in
       value_check ctx v vty
   | Syntax.Match (v, []) -> value_check ctx v Type.empty_ty
   | Syntax.Match (v, lst) ->
@@ -335,22 +341,30 @@ and computation_check ctx c cty =
       in
       List.iter check_case lst
   | Syntax.Let (defs, c) ->
-      let Type.Cty(_, effsig) = cty in
+      let (_, effs, eqs) = deconstruct_cty ~loc ~ctx cty in
       let def_checker binds (p, c) =
-        let Type.Cty(vty, synth_effsig) = computation_synth ctx c in
+        let synth_ty = computation_synth ctx c in
+        let (vty, synth_effs, synth_eqs) = deconstruct_cty ~loc ~ctx synth_ty in
         let b = pattern_check ctx p vty in
-        if eff_subtype synth_effsig effsig then
-          Assoc.concat binds b
-        else
-          Error.typing ~loc 
+        if not (eff_subtype synth_effs effs) then
+          Error.typing ~loc:c.at
             ("Encountered effect signature missmatch of types @,`%t` and @,`%t` "
               ^^ "while resolving `let` definitions (possibly implicit). @,"
               ^^ "Possible effects are `%t`, @,but types only allow effects from "
               ^^ "signature @,`%t`.")
-            (Type.print_cty ([], Type.Cty(vty, synth_effsig)))
+            (Type.print_cty ([], synth_ty))
             (Type.print_cty ([], cty))
-            (Type.print_sig synth_effsig)
-            (Type.print_sig effsig)
+            (Type.print_sig synth_effs)
+            (Type.print_sig effs)
+        else if not (eqs_subtype synth_eqs eqs) then
+          Error.typing ~loc:c.at
+            ("Encountered theory missmatch of types @,`%t` and @,`%t` "
+              ^^ "while resolving `let` definitions (possibly implicit). @,"
+              ^^ "Effect signatures of theories match, but the equations are incompatible.")
+            (Type.print_cty ([], synth_ty))
+            (Type.print_cty ([], cty))
+        else
+          Assoc.concat binds b
       in
       let binds = List.fold_left def_checker Assoc.empty defs in
       computation_check (extend_ctx ctx binds) c cty
@@ -376,18 +390,18 @@ and computation_check ctx c cty =
       List.iter def_checker defs;
       computation_check ctx' c cty
   | Syntax.Check c ->
-      if csubtype ~loc cty (Type.Cty (Type.unit_ty, [])) then
+      if csubtype ~loc ~ctx cty (Type.CTySig (Type.unit_ty, [])) then
         ignore (computation_synth ctx c)
       else
         Error.typing ~loc 
           ("Command [Check] is used to display values at runtime and returns "
           ^^ "`%t`. However the expected type of this computation is `%t`.")
-          (Type.print_cty ([], Type.Cty (Type.unit_ty, [])))
+          (Type.print_cty ([], Type.CTySig (Type.unit_ty, [])))
           (Type.print_cty ([], cty))
   | _ ->
       (* Mode switch *)
       let synth_cty = computation_synth ctx c in
-      if csubtype ~loc synth_cty cty then () else
+      if csubtype ~loc ~ctx synth_cty cty then () else
       Error.typing ~loc 
         ("The computation was synthesized the type `%t`, @,"
         ^^ "however the expected type of this computation is `%t`.")
@@ -408,7 +422,7 @@ and computation_synth ctx c =
           Error.typing ~loc 
             ("Trying to apply a non-function element of type `%t`.")
             (Type.print_vty ([], real_ty)) )
-  | Syntax.Value v -> Type.Cty (value_synth ctx v, [])
+  | Syntax.Value v -> Type.CTySig (value_synth ctx v, [])
   | Syntax.Match (v, []) ->
       Error.typing ~loc 
         ("Unable to synthesize type of match statement when matching something of @,`%t` "
@@ -435,7 +449,17 @@ and computation_synth ctx c =
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
         (* WARNING!! DOES NOT CHECK SIGNATURE MATCH! *)
-        let Type.Cty(vty, effsig) = computation_synth ctx c in
+        let synth_cty = computation_synth ctx c in
+        let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
+        if effs <> [] then
+          Error.typing ~loc:c.at 
+            ("Encountered problem while synthesizing type of `let` "
+              ^^ "definitions (possibly implicit). @,"
+              ^^ "Possible effects are `%t`, @,but only pure computations "
+              ^^ "should be in `let` definitions in synthesis. @,"
+              ^^ "Please provide an annotation for the entire `let` code block.")
+            (Type.print_sig effs)
+        else
         let b = pattern_check ctx p vty in
         Assoc.concat binds b
       in
@@ -469,26 +493,43 @@ and computation_synth ctx c =
             ( "Effect `%t` has no known type." )
             (CoreTypes.Effect.print eff)
       | Some (ty1, ty2) ->
-          value_check ctx arg ty1; Type.Cty(ty2, [eff])
+          value_check ctx arg ty1; Type.CTySig(ty2, [eff])
     )
   | Syntax.Check c -> 
-      ignore (computation_synth ctx c); Type.Cty (Type.unit_ty, [])
+      ignore (computation_synth ctx c); Type.CTySig (Type.unit_ty, [])
 
-and effect_clauses_check ctx ops (ty1, ty2) =
-  let rec checker (op, (px, pk, c_op)) =
-    match Ctx.infer_effect ctx op with
+
+(* ---------- Operation cases ---------- *)
+
+and effect_clauses_check ~loc ctx ops (effs, ty2) =
+  let rec checker (eff, (px, pk, c_op)) =
+    match Ctx.infer_effect ctx eff with
     | None ->
         Error.typing ~loc:px.at 
           ( "Effect `%t` has no known type." )
-          (CoreTypes.Effect.print op)
-    | Some (op_ty1, op_ty2) -> 
-        let ctx' = extend_ctx ctx (pattern_check ctx px op_ty1) in
-        let ctx'' = 
-          extend_ctx ctx' (pattern_check ctx pk (Type.Arrow (op_ty2, ty2)))
-        in
-        computation_check ctx'' c_op ty2   
+          (CoreTypes.Effect.print eff)
+    | Some (eff_ty1, eff_ty2) ->
+        if List.mem eff effs then
+          let ctx' = extend_ctx ctx (pattern_check ctx px eff_ty1) in
+          let ctx'' = 
+            extend_ctx ctx' (pattern_check ctx pk (Type.Arrow (eff_ty2, ty2)))
+          in
+          computation_check ctx'' c_op ty2
+        else
+          Error.typing ~loc:px.at 
+          ( "Effect `%t` is not part of the handler signature `%t`." )
+          (CoreTypes.Effect.print eff) (Type.print_sig effs)
   in
-  Assoc.iter checker ops
+  let handled_effs = Assoc.keys_of ops in
+  if eff_subtype effs (handled_effs) then
+    Assoc.iter checker ops
+  else
+    Error.typing ~loc
+      ( "Handler implements effects `%t` @, but is meant to implement `%t`." )
+      (Type.print_sig handled_effs) (Type.print_sig effs)
+
+
+(* ---------- Top level definitions ---------- *)
 
 let infer_top_comp ctx c =
   let cty = computation_synth ctx c in
@@ -497,8 +538,10 @@ let infer_top_comp ctx c =
 
 let infer_top_let ~loc ctx defs =
   let def_checker binds (p, c) =
-    (* WARNING!! DOES NOT CHECK SIGNATURE MATCH! *)
-    let Type.Cty(vty, effsig) = computation_synth ctx c in
+    (* WARNING: does not check signature match. But since
+       top let definitions cannot be handled, that is not necessary? *)
+    let synth_cty = computation_synth ctx c in
+    let (vty, _, _) = deconstruct_cty ~loc ~ctx synth_cty in
     let b = pattern_check ctx p vty in
     Assoc.concat binds b
   in

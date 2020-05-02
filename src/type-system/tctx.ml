@@ -1,5 +1,5 @@
 (** Type inference contexts *)
-module T = Type
+module Ty = Type
 
 type tydef =
   | Sum of (CoreTypes.Label.t, Type.vty option) Assoc.t
@@ -9,19 +9,19 @@ type tyctx = (CoreTypes.TyName.t, CoreTypes.TyParam.t list * tydef) Assoc.t
 
 let initial : tyctx =
   Assoc.of_list
-    [ (CoreTypes.bool_tyname, ([], Inline T.bool_ty))
-    ; (CoreTypes.unit_tyname, ([], Inline T.unit_ty))
-    ; (CoreTypes.int_tyname, ([], Inline T.int_ty))
-    ; (CoreTypes.string_tyname, ([], Inline T.string_ty))
-    ; (CoreTypes.float_tyname, ([], Inline T.float_ty))
+    [ (CoreTypes.bool_tyname, ([], Inline Ty.bool_ty))
+    ; (CoreTypes.unit_tyname, ([], Inline Ty.unit_ty))
+    ; (CoreTypes.int_tyname, ([], Inline Ty.int_ty))
+    ; (CoreTypes.string_tyname, ([], Inline Ty.string_ty))
+    ; (CoreTypes.float_tyname, ([], Inline Ty.float_ty))
     ; ( CoreTypes.list_tyname
       , let a = Type.fresh_ty_param () in
         let list_nil = (CoreTypes.nil, None) in
         let list_cons =
           ( CoreTypes.cons
           , Some
-              (T.Tuple
-                 [T.TyParam a; T.Apply (CoreTypes.list_tyname, [T.TyParam a])])
+              (Ty.Tuple
+                 [Ty.TyParam a; Ty.Apply (CoreTypes.list_tyname, [Ty.TyParam a])])
           )
         in
         ([a], Sum (Assoc.of_list [list_nil; list_cons])) )
@@ -70,9 +70,9 @@ let infer_variant lbl =
   match find_variant lbl with
   | None -> None
   | Some (ty_name, ps, _, u) ->
-      let ps', fresh_subst = T.refreshing_subst ps in
+      let ps', fresh_subst = Ty.refreshing_subst ps in
       let u' =
-        match u with None -> None | Some x -> Some (T.subst_ty fresh_subst x)
+        match u with None -> None | Some x -> Some (Ty.subst_ty fresh_subst x)
       in
       Some (apply_to_params ty_name ps', u')
 
@@ -94,20 +94,20 @@ let ty_apply ~loc ty_name lst =
 (** [check_well_formed ~loc ty] checks that type [ty] is well-formed. *)
 let check_well_formed ~loc tydef =
   let rec vcheck = function
-    | T.Basic _ | T.TyParam _ -> ()
-    | T.Apply (ty_name, tys) ->
+    | Ty.Basic _ | Ty.TyParam _ -> ()
+    | Ty.Apply (ty_name, tys) ->
         let params, _ = lookup_tydef ~loc ty_name in
         let n = List.length params in
         if List.length tys <> n then
           Error.typing ~loc "The type constructor [%t] expects %d arguments."
             (CoreTypes.TyName.print ty_name)
             n
-    | T.Arrow (ty1, cty2) -> vcheck ty1 ; ccheck cty2
-    | T.Tuple tys -> List.iter vcheck tys
-    | T.Handler (cty1, cty2) -> ccheck cty1 ; ccheck cty2
-  and ccheck (Cty (vty, eff_sig)) = 
-    vcheck vty 
-    (* ; Assoc.iter (fun (_, (ty1, ty2)) -> vcheck ty1; vcheck ty2) eff_sig *)
+    | Ty.Arrow (ty1, cty2) -> vcheck ty1 ; ccheck cty2
+    | Ty.Tuple tys -> List.iter vcheck tys
+    | Ty.Handler (cty1, cty2) -> ccheck cty1 ; ccheck cty2
+  and ccheck = function
+    (* Signatures and equations are checked to be well formed when defined *)
+    | CTySig (vty, _) | CTyTheory (vty, _) -> vcheck vty 
   in
   match tydef with
   | Sum constructors ->
@@ -120,20 +120,18 @@ let check_well_formed ~loc tydef =
 (** [check_well_formed ~loc ty] checks that the definition of type [ty] is non-cyclic. *)
 let check_noncyclic ~loc =
   let rec vcheck forbidden = function
-    | T.Basic _ | T.TyParam _ -> ()
-    | T.Apply (t, lst) ->
+    | Ty.Basic _ | Ty.TyParam _ -> ()
+    | Ty.Apply (t, lst) ->
         if List.mem t forbidden then
           Error.typing ~loc "Type definition %t is cyclic."
             (CoreTypes.TyName.print t)
         else check_tydef (t :: forbidden) (ty_apply ~loc t lst)
-    | T.Arrow (ty1, ty2) -> vcheck forbidden ty1 ; ccheck forbidden ty2
-    | T.Tuple tys -> List.iter (vcheck forbidden) tys
-    | T.Handler (ty1, ty2) -> ccheck forbidden ty1 ; ccheck forbidden ty2
-  and ccheck forbidden (Cty (vty, eff_sig)) =
-    vcheck forbidden vty 
-    (* Assoc.iter 
-      (fun (_, (ty1, ty2)) -> vcheck forbidden ty1; vcheck forbidden ty2)
-      eff_sig *)
+    | Ty.Arrow (ty1, ty2) -> vcheck forbidden ty1 ; ccheck forbidden ty2
+    | Ty.Tuple tys -> List.iter (vcheck forbidden) tys
+    | Ty.Handler (ty1, ty2) -> ccheck forbidden ty1 ; ccheck forbidden ty2
+  and ccheck forbidden = function
+    (* Signatures and equations are checked to be well formed when defined *)
+    | CTySig (vty, _) | CTyTheory (vty, _) -> vcheck forbidden vty 
   and check_tydef forbidden = function
     | Sum _ -> ()
     | Inline ty -> vcheck forbidden ty

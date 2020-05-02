@@ -72,7 +72,7 @@ let rec desugar_vtype type_sbst state =
         let state', t1' = desugar_ctype type_sbst state t1 in
         let state'', t2' = desugar_ctype type_sbst state' t2 in
         (state'', T.Handler (t1', t2'))
-    | Sugared.TyCty _ ->
+    | Sugared.TyCTySig _ ->
         Error.typing ~loc
           "Expected a value type, but a computation type was given."
   in
@@ -80,15 +80,15 @@ let rec desugar_vtype type_sbst state =
 
 and desugar_ctype type_sbst state ty =
   match ty.it with
-  | Sugared.TyCty (vty, effs) ->
+  | Sugared.TyCTySig (vty, effs) ->
       let state', vty' = desugar_vtype type_sbst state vty in
       let state'', effs' = fold_map effect_to_symbol state' effs in
-      (state'', T.Cty(vty', effs'))
+      (state'', T.CTySig(vty', effs'))
   | Sugared.TyParam _ | Sugared.TyArrow _ | Sugared.TyTuple _ 
   | Sugared.TyHandler _ | Sugared.TyApply _ ->
       (* Auto-transform to pure computation type *)
       let state', vty' = desugar_vtype type_sbst state ty in
-      (state', T.Cty(vty', []))
+      (state', T.CTySig(vty', []))
 
 (** [free_type_params t] returns all free type params in [t]. *)
 let free_type_params t =
@@ -99,7 +99,7 @@ let free_type_params t =
     | Sugared.TyArrow (t1, t2) -> ty_params t1 @ ty_params t2
     | Sugared.TyTuple lst -> List.map ty_params lst |> List.flatten
     | Sugared.TyHandler (t1, t2) -> ty_params t1 @ ty_params t2
-    | Sugared.TyCty (vty, effs) -> ty_params vty
+    | Sugared.TyCTySig (vty, effs) -> ty_params vty
   in
   unique_elements (ty_params t)
 

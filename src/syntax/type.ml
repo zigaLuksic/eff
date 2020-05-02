@@ -13,9 +13,10 @@ type vty =
   | Handler of cty * cty
 
 and cty =
-  | Cty of vty * eff_sig 
+  | CTySig of vty * eff_sig
+  | CTyTheory of vty * CoreTypes.Theory.t
 
-and eff_sig = CoreTypes.Effect.t list (* (CoreTypes.Effect.t, vty * vty) Assoc.t *)
+and eff_sig = CoreTypes.Effect.t list
 
 
 let int_ty = Basic Const.IntegerTy
@@ -34,45 +35,44 @@ let empty_ty = Apply (CoreTypes.empty_tyname, [])
 type substitution = (CoreTypes.TyParam.t, vty) Assoc.t
 
 (** [subst_ty sbst ty] replaces type parameters in [ty] according to [sbst]. *)
+(* WARNING: This relies heavliy on parameters not being in effects *)
 let rec subst_ty sbst ty =
-  let rec subst = function
-    | Apply (ty_name, tys) -> Apply (ty_name, List.map subst tys)
+  let rec vsubst = function
+    | Apply (ty_name, tys) -> Apply (ty_name, List.map vsubst tys)
     | TyParam p as ty -> (
       match Assoc.lookup p sbst with Some ty -> ty | None -> ty )
     | Basic _ as ty -> ty
-    | Tuple tys -> Tuple (List.map subst tys)
-    | Arrow (ty1, Cty (ty2, effsig2)) -> 
-        Arrow (subst ty1, Cty (subst_ty sbst ty2, effsig2))
-    | Handler (Cty (ty1, effsig1), Cty (ty2, effsig2)) ->
-        Handler (Cty (subst ty1, effsig1), Cty (subst_ty sbst ty2, effsig2))
+    | Tuple tys -> Tuple (List.map vsubst tys)
+    | Arrow (ty, cty) -> 
+        Arrow (vsubst ty, csubst cty)
+    | Handler (cty1, cty2) ->
+        Handler (csubst cty1, csubst cty2)
+  and csubst = function
+    | CTySig (vty, eff_sig) -> CTySig (vsubst vty, eff_sig)
+    | CTyTheory (vty, eff_theory) -> CTyTheory (vsubst vty, eff_theory)
   in
-  subst ty
+  vsubst ty
 
-(** [identity_subst] is a substitution that makes no changes. *)
-let identity_subst = Assoc.empty
-
-(** [compose_subst sbst1 sbst2] returns a substitution that first performs
-    [sbst2] and then [sbst1]. *)
-let compose_subst sbst1 sbst2 =
-  Assoc.concat sbst1 (Assoc.map (subst_ty sbst1) sbst2)
 
 (** [free_params ty] returns three lists of type parameters that occur in [ty].
     Each parameter is listed only once and in order in which it occurs when
     [ty] is displayed. *)
+(* WARNING: This relies heavliy on parameters not being in effects *)
 let free_params ty =
   let flatten_map f lst = List.fold_left ( @ ) [] (List.map f lst) in
-  let rec free_ty = function
-    | Apply (_, tys) -> flatten_map free_ty tys
+  let rec free_vty = function
+    | Apply (_, tys) -> flatten_map free_vty tys
     | TyParam p -> [p]
     | Basic _ -> []
-    | Tuple tys -> flatten_map free_ty tys
-    | Arrow (ty1, Cty(ty2, _)) -> free_ty ty1 @ free_ty ty2
-    | Handler (Cty(ty1, _), Cty(ty2, _)) -> free_ty ty1 @ free_ty ty2
+    | Tuple tys -> flatten_map free_vty tys
+    | Arrow (ty, cty) -> free_vty ty @ free_cty cty
+    | Handler (cty1, cty2) -> free_cty cty1 @ free_cty cty2
+  and free_cty = function
+    | CTySig (vty, eff_sig) -> free_vty vty
+    | CTyTheory (vty, eff_theory) -> free_vty vty
   in
-  CoreUtils.unique_elements (free_ty ty)
+  CoreUtils.unique_elements (free_vty ty)
 
-(** [occurs_in_ty p ty] checks if the type parameter [p] occurs in type [ty]. *)
-let occurs_in_ty p ty = List.mem p (free_params ty)
 
 (** [fresh_ty ()] gives a type [TyParam p] where [p] is a new type parameter on
     each call. *)
@@ -88,22 +88,7 @@ let refreshing_subst ps =
 let refresh params ty =
   let params', sbst = refreshing_subst params in
   (params', subst_ty sbst ty)
-(*
-(** [beautify ty] returns a sequential replacement of all type parameters in
-    [ty] that can be used for its pretty printing. *)
-let beautify (ps, ty) =
-  let next_ty_param = CoreTypes.TyParam.new_fresh () in
-  let xs = free_params ty in
-  let xs_assoc = Assoc.map_of_list (fun p -> (p, next_ty_param ())) xs in
-  let sub p = match Assoc.lookup p xs_assoc with None -> p | Some p' -> p' in
-  let ty_sbst = Assoc.map (fun p' -> TyParam p') xs_assoc in
-  (List.map sub ps, subst_ty ty_sbst ty)
 
-let beautify2 ty1 ty2 =
-  match beautify ([], Tuple [ty1; ty2]) with
-  | ps, Tuple [ty1; ty2] -> ((ps, ty1), (ps, ty2))
-  | _ -> assert false
-*)
 
 let rec print_vty (ps, vty) ppf =
   let rec print_vty ?max_level vty ppf =
@@ -132,31 +117,23 @@ let rec print_vty (ps, vty) ppf =
   in
   print_vty vty ppf
 
-and print_cty (ps, Cty (vty, effs)) ppf =
-  match effs with
-  | [] -> (* Remove printing sig from pure computations *)
-      Print.print ppf "@[<hov>%t@]"
-        (print_vty (ps, vty))
-  | _ ->
-      Print.print ppf "@[<hov>(%t!%t)@]"
-        (print_vty (ps, vty))
-        (print_sig (effs))
+and print_cty (ps, cty) ppf =
+  match cty with
+  | CTySig (vty, effs) ->
+      begin match effs with
+      | [] -> (* Remove printing sig from pure computations *)
+          Print.print ppf "@[<hov>%t@]"
+            (print_vty (ps, vty))
+      | _ ->
+          Print.print ppf "@[<hov>(%t!%t)@]"
+            (print_vty (ps, vty)) (print_sig (effs))
+      end
+  | CTyTheory (vty, theory) ->
+      Print.print ppf "@[<hov>(%t!{%t})@]"
+        (print_vty (ps, vty)) (CoreTypes.Theory.print theory)
 
 and print_sig (effs) ppf =
   let print_effty eff ppf = CoreTypes.Effect.print eff ppf in
   Print.print ppf "@[<hov>{%t}@]"
     (Print.sequence ", " (print_effty) (effs))
 
-(*
-and print_cty (ps, Cty (vty, eff_sig)) ppf =
-  let print_effty (eff, (in_ty, out_ty)) ppf =
-    Print.print ppf "@[<h>%t:%t ->@ %t@]"
-      (CoreTypes.Effect.print eff) (print_vty (ps, in_ty))
-      (print_vty (ps, out_ty))
-  in
-    Print.print ppf "@[<hov>%t!{%t}@]"
-      (print_vty (ps, vty))
-      (Print.sequence "; " (print_effty) (Assoc.to_list eff_sig))
-*)
-
-(* let print_beautiful sch = print (beautify sch) *)
