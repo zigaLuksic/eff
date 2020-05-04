@@ -87,27 +87,30 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
         ^^ " which is an implementation bug." )
         (Type.print_vty ([], ty1)) (Type.print_vty ([], ty2)) 
   | Type.Basic x1, Type.Basic x2 -> x1 = x2
-  | Type.Apply (name1, tys1), Type.Apply (name2, tys2) ->
-      CoreTypes.TyName.compare name1 name2 = 0 
-      && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2 
-  | Type.Apply (name, tys), ty -> (
-      if Tctx.transparent ~loc name then
-        match Tctx.ty_apply ~loc name tys with
-        | Tctx.Inline t -> vsubtype ~loc ~ctx t ty
-        | Tctx.Sum _ -> assert false (* not transparent *)
-      else false )
-  | ty, Type.Apply (name, tys) -> (
-      if Tctx.transparent ~loc name then
-        match Tctx.ty_apply ~loc name tys with
-        | Tctx.Inline t -> vsubtype ~loc ~ctx ty t
-        | Tctx.Sum _ -> assert false (* not transparent *)
-      else false )
   | Type.Tuple tys1, Type.Tuple tys2 -> 
       List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
   | Type.Arrow (in_ty1, out_cty1), Type.Arrow (in_ty2, out_cty2) ->
       vsubtype ~loc ~ctx in_ty2 in_ty1 && csubtype ~loc ~ctx out_cty1 out_cty2     
   | Type.Handler (in_cty1, out_cty1), Type.Handler (in_cty2, out_cty2) ->
-      csubtype ~loc ~ctx in_cty2 in_cty1 && csubtype ~loc ~ctx out_cty1 out_cty2      
+      csubtype ~loc ~ctx in_cty2 in_cty1 && csubtype ~loc ~ctx out_cty1 out_cty2
+  (* Type applications and renaming are messy. We need to check for renamings.
+     It still doesn't work for type parameters. *)
+  | Type.Apply (name1, tys1), Type.Apply (name2, tys2) -> (
+      match Tctx.ty_apply ~loc name1 tys1, Tctx.ty_apply ~loc name2 tys2 with
+      | Tctx.Sum _, Tctx.Sum _ ->
+          CoreTypes.TyName.compare name1 name2 = 0 
+          && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
+      | Tctx.Sum _, Tctx.Inline t2 -> vsubtype ~loc ~ctx ty1 t2
+      | Tctx.Inline t1, Tctx.Sum _ -> vsubtype ~loc ~ctx t1 ty2
+      | Tctx.Inline t1, Tctx.Inline t2 -> vsubtype ~loc ~ctx t1 t2 )
+  | Type.Apply (name, tys), ty -> (
+      match Tctx.ty_apply ~loc name tys with
+      | Tctx.Inline t -> vsubtype ~loc ~ctx t ty
+      | Tctx.Sum _ -> false )
+  | ty, Type.Apply (name, tys) -> (
+      match Tctx.ty_apply ~loc name tys with
+      | Tctx.Inline t -> vsubtype ~loc ~ctx ty t
+      | Tctx.Sum _ -> false )   
   | _, _ -> false
 
 and csubtype cty1 cty2 ~loc ~ctx = 
@@ -257,7 +260,7 @@ and value_check ctx v ty =
       begin match Tctx.find_variant lbl with
       | None -> 
           Error.typing ~loc 
-            "Constructor pattern `%t` does not belong to a known type."
+            "Constructor `%t` does not belong to a known type."
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match ty with
@@ -267,12 +270,12 @@ and value_check ctx v ty =
               begin match arg_opt, inf_arg_ty_opt with
                 | None, Some arg_ty ->
                     Error.typing ~loc 
-                      ( "Constructor pattern `%t` requires an argument of type `%t` "
+                      ( "Constructor `%t` requires an argument of type `%t` "
                       ^^ "but is used with no arguments." )
                       (CoreTypes.Label.print lbl) (Type.print_vty ([], arg_ty))
                 | Some arg, None ->
                     Error.typing ~loc 
-                      ( "Constructor pattern `%t` does not accept arguments, but is provided with some." )
+                      ( "Constructor `%t` does not accept arguments, but is provided with some." )
                       (CoreTypes.Label.print lbl)
                 | None, None -> ()
                 | Some arg, Some arg_ty -> 
@@ -280,7 +283,7 @@ and value_check ctx v ty =
               end
           | _ ->
             Error.typing ~loc 
-              ("Constructor pattern `%t` belongs to variant `%t` but is checked"
+              ("Constructor `%t` belongs to variant `%t` but is checked"
               ^^ " against the type `%t`.")
               (CoreTypes.Label.print lbl) (CoreTypes.TyName.print inf_name)
               (Type.print_vty ([], ty)))
@@ -337,13 +340,13 @@ and value_synth ctx v =
       begin match Tctx.find_variant lbl with
       | None -> 
           Error.typing ~loc 
-            "Constructor pattern `%t` does not belong to a known type."
+            "Constructor `%t` does not belong to a known type."
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match inf_params with
           | _ :: _ ->
               Error.typing ~loc 
-              ("Constructor pattern `%t` belongs to a non-concrete variant"
+              ("Constructor `%t` belongs to a non-concrete variant"
               ^^ " type `%t`. @,"
               ^^ "Type parameters are not inferable in current system "
               ^^ "and therefore cannot be synthesized. @,"
@@ -354,12 +357,12 @@ and value_synth ctx v =
             begin match arg_opt, inf_arg_ty_opt with
             | None, Some arg_ty ->
                 Error.typing ~loc 
-                  ( "Constructor pattern `%t` requires an argument of type `%t` "
+                  ( "Constructor `%t` requires an argument of type `%t` "
                   ^^ "but is used with no arguments." )
                   (CoreTypes.Label.print lbl) (Type.print_vty ([], arg_ty))
             | Some arg, None ->
                 Error.typing ~loc 
-                  ( "Constructor pattern `%t` does not accept arguments, but is provided with some." )
+                  ( "Constructor `%t` does not accept arguments, but is provided with some." )
                   (CoreTypes.Label.print lbl)
             | None, None -> Tctx.apply_to_params inf_name []
             | Some arg, Some arg_ty -> 
