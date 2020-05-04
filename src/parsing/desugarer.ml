@@ -615,24 +615,28 @@ let desugar_def_effect state (eff, (ty1, ty2)) =
   let state''', ty2' = desugar_vtype Assoc.empty state'' ty2 in
   (state''', (eff', (ty1', ty2')))
 
-let desugar_def_theory state (theory, eqs, effs) =
+let desugar_def_theory state (theory, th_defs, effs) =
   let state', th_symb = theory_to_symbol state theory in
-  let equation_desugarer st {it= eqn; at= loc} =
-    (* Each equation defines its own context *)
-    let st0 = {st with context=Assoc.empty} in
-    let st1, ctx' = desugar_equation_ctxs ~loc st0 eqn.Sugared.ctx in
-    let st2, tctx' = desugar_equation_ctxs ~loc st1 eqn.Sugared.tctx in
-    let st3, tmpl1' = desugar_template st2 eqn.Sugared.left_tmpl in
-    let st4, tmpl2' = 
-      desugar_template {st3 with context=st2.context} eqn.Sugared.right_tmpl 
-    in
-    let eqn' =
-      { Template.ctx = ctx'; Template.tctx = tctx'
-      ; Template.left_tmpl = tmpl1'; Template.right_tmpl = tmpl2' }
-    in
-    (st4, add_loc eqn' loc)
+  let defs_desugarer st = function
+    | Sugared.Equation {it=eqn; at=loc} ->
+        (* Each equation defines its own context *)
+        let st0 = {st with context=Assoc.empty} in
+        let st1, ctx' = desugar_equation_ctxs ~loc st0 eqn.Sugared.ctx in
+        let st2, tctx' = desugar_equation_ctxs ~loc st1 eqn.Sugared.tctx in
+        let st3, tmpl1' = desugar_template st2 eqn.Sugared.left_tmpl in
+        let st4, tmpl2' = 
+          desugar_template {st3 with context=st2.context} eqn.Sugared.right_tmpl 
+        in
+        let eqn' =
+          { Template.ctx = ctx'; Template.tctx = tctx'
+          ; Template.left_tmpl = tmpl1'; Template.right_tmpl = tmpl2' }
+        in
+        (st4, Template.Equation (add_loc eqn' loc))
+    | Sugared.Theory theory ->
+        let st', theory' = theory_to_symbol st theory in
+        (st', Template.Theory theory')
   in
   let state'', effs' = fold_map effect_to_symbol state' effs in
-  let state''', eqs' = fold_map equation_desugarer state'' eqs in
+  let state''', eqs' = fold_map defs_desugarer state'' th_defs in
   (* Dont forget to restore the context of the program. *)
   ({state''' with context=state.context}, (th_symb, eqs', effs'))

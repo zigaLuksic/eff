@@ -33,6 +33,6 @@ val desugar_tydefs :
 
 val desugar_def_theory :
      state
-  -> (SugaredSyntax.theory * SugaredSyntax.equation list * SugaredSyntax.effect list)
+  -> (SugaredSyntax.theory * SugaredSyntax.theory_def list * SugaredSyntax.effect list)
   -> state
-     * (CoreTypes.Theory.t * Template.equation list * CoreTypes.Effect.t list)
+     * (CoreTypes.Theory.t * Template.theory_def list * CoreTypes.Effect.t list)

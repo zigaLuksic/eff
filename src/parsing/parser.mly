@@ -106,8 +106,8 @@ plain_topdef:
     { Commands.External (x, t, n) }
   | EFFECT eff = effect COLON t1 = ty_apply ARROW t2 = ty
     { Commands.DefEffect (eff, (t1, t2))}
-  | THEORY theory = theory FOR LBRACE effs = separated_list(COMMA, effect) RBRACE IS eqs = equations
-    { Commands.DefTheory (theory, eqs, effs) }
+  | THEORY theory = theory FOR LBRACE effs = separated_list(COMMA, effect) RBRACE IS th_defs = theory_defs
+    { Commands.DefTheory (theory, th_defs, effs) }
 
 
 (* Toplevel directive If you change these, make sure to update lname as well,
@@ -509,11 +509,17 @@ theory:
   | theory = LNAME
     { theory}
 
-equations:
+theory_defs:
   | LBRACE RBRACE
     { [] }
-  | eqs = separated_nonempty_list(AND, equation)
-    { eqs }
+  | th_defs = separated_nonempty_list(AND, theory_def)
+    { th_defs }
+
+theory_def:
+  | equation = equation
+    { Equation equation }
+  | theory = theory
+    { Theory theory }
 
 equation: mark_position(plain_equation) { $1 }
 plain_equation:

@@ -75,7 +75,7 @@ and abstraction = pattern * term
 
 and abstraction2 = pattern * pattern * term
 
-(* Templates *)
+(** Templates *)
 
 type tctx = (string * ty) list
 
@@ -98,3 +98,8 @@ and plain_equation = {ctx: tctx; tctx: tctx; left_tmpl: template; right_tmpl: te
 let tplacebo = 
   { it= TApply ("Todo", {it= (Var "Todo"); at=Location.unknown})
   ; at= Location.unknown }
+
+
+type theory_def =
+  | Equation of equation
+  | Theory of theory

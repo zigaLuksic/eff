@@ -6,6 +6,8 @@ type variable = CoreTypes.Variable.t
 
 type effect = CoreTypes.Effect.t
 
+type theory = CoreTypes.Theory.t
+
 type ctx = (CoreTypes.Variable.t, Type.vty) Assoc.t
 
 (** Templates *)
@@ -22,3 +24,7 @@ and plain_t =
 type equation = plain_equation located
 
 and plain_equation = {ctx: ctx; tctx: ctx; left_tmpl: t; right_tmpl: t}
+
+type theory_def =
+  | Equation of equation
+  | Theory of theory

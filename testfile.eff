@@ -78,3 +78,30 @@ type britney = int
 type 'a bitch = 'a list
 
 let its : britney bitch = ([] : int list)
+
+effect Choice : (int * int) -> int (*yeah yeah, not the right one*)
+
+theory eqn_comm for {Choice} is
+  { x:int, y:int ; z:int -> * |-
+    Choice((x,y); w.z w) ~ Choice((y,x); w.z w) }
+
+theory eqn_idem for {Choice} is
+  { x:int; z:int -> * |- Choice((x,x); w.z w) ~ z x }
+
+theory bad_eqn for {Choice, Ping} is {}
+
+(* test mixed definition *)
+theory nondet for {Choice} is eqn_comm and eqn_idem and 
+  { x:int, y:int, w:int; z:int -> * |-
+      Choice((x,y); r. Choice((r,w); q. z q))
+      ~
+      Choice((y,w); r. Choice((x,r); q. z q)) }
+
+(* [This one fails :D]
+theory bad_test for {Choice} is eqn_comm and eqn_idem and bad_eqn
+*)
+
+theory test for {Choice} is eqn_comm and eqn_idem
+
+(* This one correctly gueses the subtype *)
+let x : unit!nondet = (() : unit!test)

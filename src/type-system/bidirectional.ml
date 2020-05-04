@@ -199,7 +199,7 @@ let rec pattern_check ctx p ty =
                       ^^ "but is used with no arguments." )
                       (CoreTypes.Label.print lbl) (Type.print_vty ([], arg_ty))
                 | Some arg_p, None ->
-                    Error.typing ~loc 
+                    Error.typing ~loc
                       ( "Constructor pattern `%t` does not accept arguments, but is provided with some." )
                       (CoreTypes.Label.print lbl)
                 | None, None -> Assoc.empty
@@ -705,6 +705,20 @@ let wf_eq ctx effs {it=eq; at=loc} =
   wf_template eq_ctx (eq.Template.tctx) effs (eq.Template.left_tmpl);
   wf_template eq_ctx (eq.Template.tctx) effs (eq.Template.left_tmpl)
 
+let wf_inherited_theory ctx theory effs ~loc =
+  match SimpleCtx.infer_theory ctx theory with
+  | None ->
+      Error.typing ~loc
+        ("Encountered an unknown theory `%t` from which equations are"
+        ^^ " to be inherited.") (CoreTypes.Theory.print theory)
+  | Some (th_eqs, th_effs) ->
+      if eff_subtype th_effs effs then th_eqs else
+        Error.typing ~loc
+        ("Signature missmatch when trying to inherit equations of theory `%t`."
+        ^^" @,Signature `%t` is not a subtype of `%t`.")
+        (CoreTypes.Theory.print theory) 
+        (Type.print_sig th_effs) (Type.print_sig effs)
+
 (* ========== Top level definitions ========== *)
 
 let infer_top_comp ctx c =
@@ -767,8 +781,12 @@ let check_def_effect ~loc ctx (eff, (ty1, ty2)) =
   wf_vtype ~loc ctx ty1; wf_vtype ~loc ctx ty2;
   SimpleCtx.add_effect ctx eff (ty1, ty2)
 
-let check_def_theory ~loc ctx (theory, eqs, effs) =
+let check_def_theory ~loc ctx (theory, theory_defs, effs) =
   (* Duplication of effects is checked when adding to ctx. *)
   wf_sig ~loc ctx effs;
-  List.iter (wf_eq ctx effs) eqs;
+  let checker_gatherer = function
+    | Template.Equation eq -> wf_eq ctx effs eq; [eq]
+    | Template.Theory th -> wf_inherited_theory ~loc ctx th effs
+  in
+  let eqs = theory_defs |> List.map checker_gatherer |> List.flatten in
   SimpleCtx.add_theory ctx theory (eqs, effs)

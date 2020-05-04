@@ -80,15 +80,16 @@ module Make (Backend : BackendSignature.T) = struct
         ; desugarer_state= desugarer_state'
         ; backend_state= backend_state' }
     | Commands.DefTheory theory_def ->
-        let desugarer_state', (theory, eqs, effs) =
+        let desugarer_state', (theory, theory_defs, effs) =
           Desugarer.desugar_def_theory state.desugarer_state theory_def
         in
         let type_system_state' =
           TypeSystem.check_def_theory ~loc 
-            state.type_system_state (theory, eqs, effs)
+            state.type_system_state (theory, theory_defs, effs)
         in
         let backend_state' =
-          Backend.process_def_theory state.backend_state (theory, eqs, effs)
+          Backend.process_def_theory 
+            state.backend_state (theory, theory_defs, effs)
         in
         { type_system_state= type_system_state'
         ; desugarer_state= desugarer_state'

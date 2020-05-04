@@ -23,7 +23,7 @@ module type T = sig
 
   val process_def_theory :
        state 
-    -> CoreTypes.Theory.t * Template.equation list * Type.eff_sig
+    -> CoreTypes.Theory.t * Template.theory_def list * Type.eff_sig
     -> state
 
   val process_top_let :
