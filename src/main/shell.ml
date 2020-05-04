@@ -78,6 +78,19 @@ module Make (Backend : BackendSignature.T) = struct
         { type_system_state= type_system_state'
         ; desugarer_state= desugarer_state'
         ; backend_state= backend_state' }
+    | Commands.DefTheory theory_def ->
+        let desugarer_state', (theory, eqs, effs) =
+          Desugarer.desugar_def_theory state.desugarer_state theory_def
+        in
+        let type_system_state' =
+          SimpleCtx.add_theory state.type_system_state theory (eqs, effs)
+        in
+        let backend_state' =
+          Backend.process_def_theory state.backend_state (theory, (eqs, effs))
+        in
+        { type_system_state= type_system_state'
+        ; desugarer_state= desugarer_state'
+        ; backend_state= backend_state' }
     | Commands.Quit ->
         Backend.finalize state.backend_state ;
         exit 0

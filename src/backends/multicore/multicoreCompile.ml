@@ -34,6 +34,8 @@ module Backend (P : BackendParameters) : BackendSignature.T = struct
     let ty2' = MulticoreTranslate.of_type ty2 in
     update state (DefEffect (eff, (ty1', ty2')))
 
+  let process_def_theory state _ = state
+
   let process_top_let state defs vars =
     let converter (p, c) =
       (MulticoreTranslate.of_pattern p, MulticoreTranslate.of_computation c)

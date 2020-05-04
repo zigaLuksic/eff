@@ -10,11 +10,13 @@
     ("end", END);
     ("external", EXTERNAL);
     ("false", BOOL false);
+    ("for", FOR);
     ("fun", FUN);
     ("function", FUNCTION);
     ("handle", HANDLE);
     ("handler", HANDLER);
     ("if", IF);
+    ("is", IS);
     ("in", IN);
     ("let", LET);
     ("match", MATCH);
@@ -24,6 +26,7 @@
     ("rec", REC);
     ("then", THEN);
     ("true", BOOL true);
+    ("theory", THEORY);
     ("type", TYPE);
     ("val", VAL);
     ("with", WITH)

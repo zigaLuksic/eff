@@ -32,6 +32,8 @@ module Backend : BackendSignature.T = struct
 
   let process_def_effect state (eff, (ty1, ty2)) = state
 
+  let process_def_theory state (theory, (ty1, ty2)) = state
+
   let process_top_let state defs vars =
     let state' =
       List.fold_right

@@ -33,6 +33,7 @@
 %token <SugaredSyntax.typaram> PARAM
 %token TYPE ARROW HARROW OF 
 %token EFFECT VAL
+%token THEORY FOR IS
 %token EXTERNAL
 %token MATCH WITH FUNCTION HASH
 %token LET REC AND IN

@@ -21,6 +21,11 @@ module type T = sig
   val process_def_effect :
     state -> CoreTypes.Effect.t * (Type.vty * Type.vty) -> state
 
+  val process_def_theory :
+       state 
+    -> CoreTypes.Theory.t * (Template.equation list * Type.eff_sig) 
+    -> state
+
   val process_top_let :
        state
     -> (CoreSyntax.pattern * CoreSyntax.computation) list
