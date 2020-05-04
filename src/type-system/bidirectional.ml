@@ -78,6 +78,15 @@ let wf_sig ~loc ctx effs =
 
 (* ========== Subtyping ========== *)
 
+let rec extract_type ~loc (name, tys) =
+  (* This is used to extract the type through renamings *)
+  match Tctx.ty_apply ~loc name tys with
+  | Tctx.Sum _ -> Type.Apply (name, tys)
+  | Tctx.Inline t -> 
+      match t with
+      | Type.Apply (name, tys) -> extract_type ~loc (name, tys)
+      | _ -> t
+
 let rec vsubtype ty1 ty2 ~loc ~ctx =
   match ty1, ty2 with
   | Type.TyParam _, _ | _, Type.TyParam _ ->
@@ -93,25 +102,18 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
       vsubtype ~loc ~ctx in_ty2 in_ty1 && csubtype ~loc ~ctx out_cty1 out_cty2     
   | Type.Handler (in_cty1, out_cty1), Type.Handler (in_cty2, out_cty2) ->
       csubtype ~loc ~ctx in_cty2 in_cty1 && csubtype ~loc ~ctx out_cty1 out_cty2
-  (* Type applications and renaming are messy. We need to check for renamings.
-     It still doesn't work for type parameters. *)
-  | Type.Apply (name1, tys1), Type.Apply (name2, tys2) -> (
-      match Tctx.ty_apply ~loc name1 tys1, Tctx.ty_apply ~loc name2 tys2 with
-      | Tctx.Sum _, Tctx.Sum _ ->
-          CoreTypes.TyName.compare name1 name2 = 0 
-          && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
-      | Tctx.Sum _, Tctx.Inline t2 -> vsubtype ~loc ~ctx ty1 t2
-      | Tctx.Inline t1, Tctx.Sum _ -> vsubtype ~loc ~ctx t1 ty2
-      | Tctx.Inline t1, Tctx.Inline t2 -> vsubtype ~loc ~ctx t1 t2 )
-  | Type.Apply (name, tys), ty -> (
-      match Tctx.ty_apply ~loc name tys with
-      | Tctx.Inline t -> vsubtype ~loc ~ctx t ty
-      | Tctx.Sum _ -> false )
-  | ty, Type.Apply (name, tys) -> (
-      match Tctx.ty_apply ~loc name tys with
-      | Tctx.Inline t -> vsubtype ~loc ~ctx ty t
-      | Tctx.Sum _ -> false )   
-  | _, _ -> false
+  (* Type applications and renaming are messy. We need to check for renamings. *)
+  | Type.Apply (name, tys), ty when (Tctx.transparent ~loc name) ->
+      vsubtype ~loc ~ctx (extract_type ~loc (name, tys)) ty
+  | ty, Type.Apply (name, tys) when (Tctx.transparent ~loc name) -> 
+      vsubtype ~loc ~ctx ty (extract_type ~loc (name, tys))
+  | Type.Apply (name1, tys1), Type.Apply (name2, tys2) ->
+      CoreTypes.TyName.compare name1 name2 = 0
+      && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
+  | _, _ ->
+      Error.typing ~loc 
+        ( "%t || %t" )
+        (Type.print_vty ([], ty1)) (Type.print_vty ([], ty2))
 
 and csubtype cty1 cty2 ~loc ~ctx = 
   let vty1, effs1, eqs1 = deconstruct_cty ~loc ~ctx cty1 in
@@ -177,8 +179,18 @@ let rec pattern_check ctx p ty =
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match ty with
-          | Type.Apply (chk_name, chck_params) 
-            when CoreTypes.TyName.compare chk_name inf_name = 0 ->
+          | Type.Apply (chk_name, chck_params) ->
+              (* Gotta check that renaming *)
+              if Tctx.transparent ~loc chk_name then
+                pattern_check ctx p (extract_type ~loc (chk_name, chck_params))
+              else if CoreTypes.TyName.compare chk_name inf_name <> 0 then
+                Error.typing ~loc 
+                ("Constructor pattern `%t` belongs to variant `%t` but is checked"
+                ^^ " against the type `%t`.")
+                (CoreTypes.Label.print lbl) (CoreTypes.TyName.print inf_name)
+                (Type.print_vty ([], ty))
+              else
+              (* Doesnt need to extract types anymore *)
               let sbst = List.combine inf_params chck_params |> Assoc.of_list in
               begin match arg_p_opt, inf_arg_ty_opt with
                 | None, Some arg_ty ->
@@ -264,8 +276,16 @@ and value_check ctx v ty =
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match ty with
-          | Type.Apply (chk_name, chck_params) 
-            when CoreTypes.TyName.compare chk_name inf_name = 0 ->
+          | Type.Apply (chk_name, chck_params)  ->
+              if Tctx.transparent ~loc chk_name then
+                value_check ctx v (extract_type ~loc (chk_name, chck_params))
+              else if CoreTypes.TyName.compare chk_name inf_name <> 0 then
+                Error.typing ~loc 
+                ("Constructor `%t` belongs to variant `%t` but is checked"
+                ^^ " against the type `%t`.")
+                (CoreTypes.Label.print lbl) (CoreTypes.TyName.print inf_name)
+                (Type.print_vty ([], ty))
+              else
               let sbst = List.combine inf_params chck_params |> Assoc.of_list in
               begin match arg_opt, inf_arg_ty_opt with
                 | None, Some arg_ty ->

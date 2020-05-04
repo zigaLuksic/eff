@@ -51,17 +51,17 @@ let test4 = with yield_sum handle tree_yield test_tree
 
 type state = int
 
-effect Get : unit -> int
-effect Set : int -> unit
+effect Get : unit -> state
+effect Set : state -> unit
 
 theory state_theory for {Get, Set} is 
-  { . ; z : int * int -> * |- 
+  { . ; z : state * state -> * |- 
     Get((); y.Get(();w. z (y, w))) ~ Get((); y. z (y, y)) }
   and
-  { x : int ; z : int -> * |-
+  { x : state ; z : state -> * |-
     Set(x; y.Get(();w. z w)) ~ Set(x; y. z x) }
 
-let state_handler : int!state_theory => int -> (int * int) = handler
+let state_handler : int!state_theory => state -> (int * state) = handler
   | effect Get () k -> (fun s -> k s s)
   | effect Set s k -> (fun _ -> k () s)
   | val x -> (fun s -> (x, s))
@@ -73,4 +73,8 @@ let test3_fun : unit -> int!{Get} = fun () -> !Get ()
 let test3 = with state_handler handle test3_fun ()
 
   
-  
+type britney = int
+
+type 'a bitch = 'a list
+
+let its : britney bitch = ([] : int list)
