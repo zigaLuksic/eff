@@ -129,7 +129,7 @@ and print_cty (ps, cty) ppf =
             (print_vty (ps, vty)) (print_sig (effs))
       end
   | CTyTheory (vty, theory) ->
-      Print.print ppf "@[<hov>(%t!{%t})@]"
+      Print.print ppf "@[<hov>(%t!%t)@]"
         (print_vty (ps, vty)) (CoreTypes.Theory.print theory)
 
 and print_sig (effs) ppf =

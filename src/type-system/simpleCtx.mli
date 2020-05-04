@@ -42,3 +42,5 @@ val add_effect : t -> CoreSyntax.effect -> Type.vty * Type.vty -> t
 val infer_theory : t -> CoreTypes.Theory.t -> (Template.equation list * Type.eff_sig) option
 
 val add_theory : t -> CoreTypes.Theory.t -> (Template.equation list * Type.eff_sig) -> t
+
+val switch_variables : t -> (CoreTypes.Variable.t, ty_scheme) Assoc.t -> t

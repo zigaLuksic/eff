@@ -77,11 +77,7 @@ and abstraction2 = pattern * pattern * term
 
 (* Templates *)
 
-type varty =
-  | ValueTy of ty
-  | TemplateTy of ty
-
-type tctx = ((string * varty) list) located
+type tctx = (string * ty) list
 
 type template = plain_template located
 
@@ -94,4 +90,11 @@ and plain_template =
   | TEffect of effect * term * variable * template
 
 (** Equations *)
-type equation = tctx * template * template
+
+type equation = plain_equation located
+
+and plain_equation = {ctx: tctx; tctx: tctx; left_tmpl: template; right_tmpl: template}
+
+let tplacebo = 
+  { it= TApply ("Todo", {it= (Var "Todo"); at=Location.unknown})
+  ; at= Location.unknown }

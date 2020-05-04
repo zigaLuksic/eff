@@ -69,8 +69,9 @@ module Make (Backend : BackendSignature.T) = struct
         let desugarer_state', (eff, (ty1, ty2)) =
           Desugarer.desugar_def_effect state.desugarer_state effect_def
         in
-        let type_system_state' =
-          SimpleCtx.add_effect state.type_system_state eff (ty1, ty2)
+        let type_system_state' = 
+          TypeSystem.check_def_effect ~loc 
+            state.type_system_state (eff, (ty1, ty2))
         in
         let backend_state' =
           Backend.process_def_effect state.backend_state (eff, (ty1, ty2))
@@ -83,10 +84,11 @@ module Make (Backend : BackendSignature.T) = struct
           Desugarer.desugar_def_theory state.desugarer_state theory_def
         in
         let type_system_state' =
-          SimpleCtx.add_theory state.type_system_state theory (eqs, effs)
+          TypeSystem.check_def_theory ~loc 
+            state.type_system_state (theory, eqs, effs)
         in
         let backend_state' =
-          Backend.process_def_theory state.backend_state (theory, (eqs, effs))
+          Backend.process_def_theory state.backend_state (theory, eqs, effs)
         in
         { type_system_state= type_system_state'
         ; desugarer_state= desugarer_state'

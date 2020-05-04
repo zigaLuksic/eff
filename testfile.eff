@@ -17,17 +17,6 @@ let rec (pinger : int list -> unit!{Ping}) = function
   | [] -> ()
   | x :: xs -> !Ping x; pinger xs  
 
-effect Get : unit -> int
-effect Set : int -> unit
-
-let state_handler : int!{Get,Set} => int -> (int * int) = handler
-  | effect Get () k -> (fun s -> k s s)
-  | effect Set s k -> (fun _ -> k () s)
-  | val x -> (fun s -> (x, s))
-
-let test2 = with state_handler handle !Set(10 + !Get ()); !Get () + 2
-
-
 
 let rec (int_foldl 
   : (int -> int -> int) -> int -> int list -> int)
@@ -59,4 +48,29 @@ let test_tree : int tree = (Node (leaf 1, 5, Node (leaf 4, 2, leaf 0)))
 
 let test4 = with yield_sum handle tree_yield test_tree
 
-let test5 : (int!{Undefined}) = 1
+
+type state = int
+
+effect Get : unit -> int
+effect Set : int -> unit
+
+theory state_theory for {Get, Set} is 
+  { . ; z : int * int -> * |- 
+    Get((); y.Get(();w. z (y, w))) ~ Get((); y. z (y, y)) }
+  and
+  { x : int ; z : int -> * |-
+    Set(x; y.Get(();w. z w)) ~ Set(x; y. z x) }
+
+let state_handler : int!state_theory => int -> (int * int) = handler
+  | effect Get () k -> (fun s -> k s s)
+  | effect Set s k -> (fun _ -> k () s)
+  | val x -> (fun s -> (x, s))
+
+let test2 = with state_handler handle !Set(10 + !Get ()); !Get () + 2
+
+let test3_fun : unit -> int!{Get} = fun () -> !Get ()
+
+let test3 = with state_handler handle test3_fun ()
+
+  
+  

@@ -116,6 +116,9 @@ rule token = parse
   | '#'                 { HASH }
   | ':'                 { COLON }
   | ','                 { COMMA }
+  | '.'                 { DOT }
+  | "|-"                { VDASH }
+  | '~'                 { REL }
   | '|'                 { BAR }
   | "||"                { BARBAR }
   | ";;"                { SEMISEMI }

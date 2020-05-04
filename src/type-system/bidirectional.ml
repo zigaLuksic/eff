@@ -20,6 +20,62 @@ let extend_ctx ctx binds =
     (fun acc (x, ty) -> Ctx.extend acc x (Ctx.generalize ctx true ty)) 
     ctx binds
 
+(* ========== Well formedness ========== *)
+(* We always assume that the context is well formed because we check before 
+   extending the context. *)
+
+let rec wf_vtype ~loc ctx ty =
+  match ty with
+  | Type.TyParam _ | Type.Basic _ -> ()
+  | Type.Tuple tys -> List.iter (wf_vtype ~loc ctx) tys
+  | Type.Arrow (inty, outty) -> 
+      wf_vtype ~loc ctx inty; wf_ctype ~loc ctx outty
+  | Type.Handler (inty, outty) -> 
+      wf_ctype ~loc ctx inty; wf_ctype ~loc ctx outty
+  | Type.Apply (lbl, args) ->
+      let params, _ = Tctx.lookup_tydef ~loc lbl in
+      if List.length params <> List.length args then
+        Error.typing ~loc
+          ( "Type `%t` is malformed.@, The type constructor `%t` accepts %d "
+          ^^ "arguments, but is applied to %d.")
+          (Type.print_vty ([], ty)) (CoreTypes.TyName.print lbl)
+          (List.length params) (List.length args)
+      else
+        List.iter (wf_vtype ~loc ctx) args
+
+and wf_ctype ~loc ctx ty =
+  match ty with
+  | Type.CTySig (vty, effs) -> 
+      let _ = wf_vtype ~loc ctx vty in
+      let checker eff =
+        match Ctx.infer_effect ctx eff with
+        | Some _ -> () 
+        | None ->
+            Error.typing ~loc
+              ( "Type `%t` is malformed.@, The effect `%t` is unknown.")
+              (Type.print_cty ([], ty)) (CoreTypes.Effect.print eff)
+      in 
+      List.iter checker effs
+  | Type.CTyTheory (vty, theory) -> 
+      let _ = wf_vtype ~loc ctx vty in
+      match Ctx.infer_theory ctx theory with
+      | Some _ -> () 
+      | None ->
+          Error.typing ~loc
+            ( "Type `%t` is malformed.@, The theory `%t` is unknown.")
+            (Type.print_cty ([], ty)) (CoreTypes.Theory.print theory)
+
+let wf_sig ~loc ctx effs =
+  let checker eff =
+    match Ctx.infer_effect ctx eff with
+    | Some _ -> () 
+    | None ->
+        Error.typing ~loc
+          ( "Signature `%t` is malformed.@, The effect `%t` is unknown.")
+          (Type.print_sig effs) (CoreTypes.Effect.print eff)
+  in 
+  List.iter checker effs
+
 (* ========== Subtyping ========== *)
 
 let rec vsubtype ty1 ty2 ~loc ~ctx =
@@ -35,14 +91,14 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
       CoreTypes.TyName.compare name1 name2 = 0 
       && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2 
   | Type.Apply (name, tys), ty -> (
-      if Tctx.transparent ~loc:Location.unknown name then
-        match Tctx.ty_apply ~loc:Location.unknown name tys with
+      if Tctx.transparent ~loc name then
+        match Tctx.ty_apply ~loc name tys with
         | Tctx.Inline t -> vsubtype ~loc ~ctx t ty
         | Tctx.Sum _ -> assert false (* not transparent *)
       else false )
   | ty, Type.Apply (name, tys) -> (
-      if Tctx.transparent ~loc:Location.unknown name then
-        match Tctx.ty_apply ~loc:Location.unknown name tys with
+      if Tctx.transparent ~loc name then
+        match Tctx.ty_apply ~loc name tys with
         | Tctx.Inline t -> vsubtype ~loc ~ctx ty t
         | Tctx.Sum _ -> assert false (* not transparent *)
       else false )
@@ -112,7 +168,7 @@ let rec pattern_check ctx p ty =
       end
   | Syntax.PVariant (lbl, arg_p_opt) ->
       begin match Tctx.find_variant lbl with
-      | None -> 
+      | None ->
           Error.typing ~loc 
             "Constructor pattern `%t` does not belong to a known type."
             (CoreTypes.Label.print lbl)
@@ -191,6 +247,7 @@ and value_check ctx v ty =
             (Type.print_vty ([], ty))
       end
   | Syntax.VAnnotated (v, ann_ty) ->
+      wf_vtype ~loc ctx ann_ty;
       if vsubtype ~loc ~ctx ann_ty ty then value_check ctx v ann_ty else
         Error.typing ~loc 
           ( "Value is checked against type `%t` but is annotated with"
@@ -274,7 +331,8 @@ and value_synth ctx v =
   | Syntax.Const const -> Type.Basic (Const.infer_ty const)
   | Syntax.Tuple vs ->
       Type.Tuple (left_to_right_map (value_synth ctx) vs)
-  | Syntax.VAnnotated (v, ty) -> (value_check ctx v ty; ty)
+  | Syntax.VAnnotated (v, ty) -> 
+      (wf_vtype ~loc ctx ty; value_check ctx v ty; ty)
   | Syntax.Variant (lbl, arg_opt) ->
       begin match Tctx.find_variant lbl with
       | None -> 
@@ -324,6 +382,7 @@ and computation_check ctx c cty =
   let loc = c.at in
   match c.it with
   | Syntax.CAnnotated (c, ann_ty) ->
+      wf_ctype ~loc ctx ann_ty;
       if csubtype ~loc ~ctx ann_ty cty then computation_check ctx c ann_ty else
         Error.typing ~loc 
           ( "Computation is expected to be of type `%t` @,but is annotated with"
@@ -377,6 +436,7 @@ and computation_check ctx c cty =
       let def_checker (name, ty, (p, c)) =
         match ty with
         | Type.Arrow (ty1, ty2) ->
+            wf_vtype ~loc ctx' ty; 
             let b = pattern_check ctx' p ty1 in
             let ctx'' = extend_ctx ctx' b in
             computation_check ctx'' c ty2
@@ -413,7 +473,8 @@ and computation_check ctx c cty =
 and computation_synth ctx c =
   let loc = c.at in
   match c.it with
-  | Syntax.CAnnotated (c, ann_ty) -> (computation_check ctx c ann_ty; ann_ty)
+  | Syntax.CAnnotated (c, ann_ty) -> 
+      (wf_ctype ~loc ctx ann_ty; computation_check ctx c ann_ty; ann_ty)
   | Syntax.Apply (v1, v2) ->
       let ty1 = value_synth ctx v1 in
       (match ty1 with
@@ -474,6 +535,7 @@ and computation_synth ctx c =
       let def_checker (name, ty, (p, c)) =
         match ty with
         | Type.Arrow (ty1, ty2) ->
+            wf_vtype ~loc ctx' ty; 
             let b = pattern_check ctx' p ty1 in
             let ctx'' = extend_ctx ctx' b in
             computation_check ctx'' c ty2
@@ -556,6 +618,69 @@ and effect_clauses_check ~loc ctx ops (effs, ty2) =
       ( "Handler implements effects `%t` @, but is meant to implement `%t`." )
       (Type.print_sig handled_effs) (Type.print_sig effs)
 
+(* ========== Template well formedness ========== *)
+
+let rec wf_template ctx tctx effs {it=t; at=loc} =
+  match t with
+  | Template.Apply (tvar, v) -> (
+      match Assoc.lookup tvar tctx with 
+      | None -> 
+          Error.typing ~loc
+            ( "Template variable `%t` is not part of the template context." )
+            (CoreTypes.Variable.print tvar)
+      | Some ty -> value_check ctx v ty )
+  | Template.Match (v, []) -> value_check ctx v Type.empty_ty
+  | Template.Match (v, lst) ->
+      let in_ty = value_synth ctx v in
+      let check_case (p, t') =
+        let binds = pattern_check ctx p in_ty in
+        wf_template (extend_ctx ctx binds) tctx effs t'
+      in
+      List.iter check_case lst
+  | Template.Let (defs, t) ->
+      let def_checker binds (p, c) =
+        let synth_ty = computation_synth_check_effs ctx c effs in
+        let (vty, synth_effs, synth_eqs) = deconstruct_cty ~loc ~ctx synth_ty in
+        let b = pattern_check ctx p vty in
+        if synth_effs <> [] || synth_eqs <> [] then
+          Error.typing ~loc:c.at
+            ("Encountered a signature missmatch when checking well formedness "
+            ^^ "of equation. @,The synthesized type of the computation is@,"
+            ^^ "`%t`, but only pure computations are allowed in `let` templates.")
+            (Type.print_cty ([], synth_ty))
+        else
+          Assoc.concat binds b
+      in
+      let binds = List.fold_left def_checker Assoc.empty defs in
+      wf_template (extend_ctx ctx binds) tctx effs t
+  | Template.Effect (eff, v, y, t) ->
+      if not (List.mem eff effs) then
+        Error.typing ~loc
+            ("Encountered an unknown effect `%t` when checking well formedness"
+            ^^ " of equation. @,Only effects `%t`, @,for which the theory is"
+            ^^ " being defined, @,can be used in equations.")
+            (CoreTypes.Effect.print eff) (Type.print_sig effs)
+      else
+        match SimpleCtx.infer_effect ctx eff with
+        | None -> 
+            failwith "Why did well formedness of the signature not catch this?"
+        | Some (inty, outty) ->
+            value_check ctx v inty;
+            wf_template (SimpleCtx.extend ctx y ([], outty)) tctx effs t
+
+
+let wf_eq_ctx ctx eq_ctx ~loc =
+  Assoc.iter (fun (_, ty) -> wf_vtype ~loc ctx ty) eq_ctx
+
+let wf_eq ctx effs {it=eq; at=loc} =
+  wf_eq_ctx ~loc ctx eq.Template.ctx; wf_eq_ctx ~loc ctx eq.Template.tctx;
+  let eq_ctx =
+    (* switch to equation context and switch types to type schema *)
+    SimpleCtx.switch_variables ctx 
+      (Assoc.map (fun ty -> ([], ty)) eq.Template.ctx)
+  in
+  wf_template eq_ctx (eq.Template.tctx) effs (eq.Template.left_tmpl);
+  wf_template eq_ctx (eq.Template.tctx) effs (eq.Template.left_tmpl)
 
 (* ========== Top level definitions ========== *)
 
@@ -593,6 +718,7 @@ let infer_top_let_rec ~loc ctx defs =
   let def_checker (name, ty, (p, c)) =
     match ty with
     | Type.Arrow (ty1, ty2) ->
+        wf_vtype ~loc ctx' ty; 
         let b = pattern_check ctx' p ty1 in
         let ctx'' = extend_ctx ctx' b in
         computation_check ctx'' c ty2
@@ -612,3 +738,14 @@ let infer_top_let_rec ~loc ctx defs =
     (fun (name, ty, (p, c)) -> Exhaust.is_irrefutable p ; Exhaust.check_comp c)
     defs ;
   (vars, ctx')
+
+let check_def_effect ~loc ctx (eff, (ty1, ty2)) =
+  (* Duplication of effects is checked when adding to ctx. *)
+  wf_vtype ~loc ctx ty1; wf_vtype ~loc ctx ty2;
+  SimpleCtx.add_effect ctx eff (ty1, ty2)
+
+let check_def_theory ~loc ctx (theory, eqs, effs) =
+  (* Duplication of effects is checked when adding to ctx. *)
+  wf_sig ~loc ctx effs;
+  List.iter (wf_eq ctx effs) eqs;
+  SimpleCtx.add_theory ctx theory (eqs, effs)

@@ -62,3 +62,5 @@ let add_theory env theory theory_deff =
   | Some _ ->
       Error.typing ~loc:Location.unknown "Theory `%t` is already defined."
         (CoreTypes.Theory.print theory)
+
+let switch_variables env vars = {env with variables=vars}

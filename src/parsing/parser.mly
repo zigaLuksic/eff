@@ -33,7 +33,7 @@
 %token <SugaredSyntax.typaram> PARAM
 %token TYPE ARROW HARROW OF 
 %token EFFECT VAL
-%token THEORY FOR IS
+%token THEORY FOR IS VDASH DOT REL
 %token EXTERNAL
 %token MATCH WITH FUNCTION HASH
 %token LET REC AND IN
@@ -106,6 +106,8 @@ plain_topdef:
     { Commands.External (x, t, n) }
   | EFFECT eff = effect COLON t1 = ty_apply ARROW t2 = ty
     { Commands.DefEffect (eff, (t1, t2))}
+  | THEORY theory = theory FOR LBRACE effs = separated_list(COMMA, effect) RBRACE IS eqs = equations
+    { Commands.DefTheory (theory, eqs, effs) }
 
 
 (* Toplevel directive If you change these, make sure to update lname as well,
@@ -263,6 +265,10 @@ function_case:
 
 match_case:
   | p = pattern ARROW t = term
+    { (p, t) }
+
+template_match_case:
+  | p = pattern ARROW t = template
     { (p, t) }
 
 lambdas0(SEP):
@@ -449,6 +455,8 @@ ty: mark_position(plain_ty) { $1 }
 plain_ty:
   | t = ty_apply EXCLAMATION LBRACE effs = separated_list(COMMA, effect) RBRACE
     { TyCTySig(t, effs) }
+  | t = ty_apply EXCLAMATION theory = theory
+    { TyCTyTheory(t, theory) }
   | t1 = ty_apply ARROW t2 = ty
     { TyArrow (t1, t2) }
   | t1 = ty HARROW t2 = ty
@@ -456,7 +464,7 @@ plain_ty:
   | t = plain_prod_ty
     { t }
 
-(* prod_ty: mark_position(plain_prod_ty) { $1 } *)
+prod_ty: mark_position(plain_prod_ty) { $1 }
 plain_prod_ty:
   | ts = separated_nonempty_list(STAR, ty_apply)
     {
@@ -496,5 +504,50 @@ effect:
 invoked_effect:
   | eff = EFFNAME
     { eff }
+
+theory:
+  | theory = LNAME
+    { theory}
+
+equations:
+  | LBRACE RBRACE
+    { [] }
+  | eqs = separated_nonempty_list(AND, equation)
+    { eqs }
+
+equation: mark_position(plain_equation) { $1 }
+plain_equation:
+  | LBRACE ctx = ctx(ctx_var) SEMI tctx = ctx(tctx_var) VDASH  tmpl1 = template REL tmpl2 = template RBRACE
+    { {ctx=ctx; tctx=tctx; left_tmpl=tmpl1; right_tmpl=tmpl2 } }
+
+ctx(var):
+  | DOT
+    { [] }
+  | ctx = separated_nonempty_list(COMMA, var)
+    { ctx }
+
+ctx_var:
+  | x = ident COLON ty = ty
+    { (x, ty) }
+
+tctx_var:
+  | x = ident COLON ty = prod_ty ARROW STAR
+    { (x, ty) }
+
+
+template: mark_position(plain_template) { $1 }
+plain_template:
+  | MATCH t = term WITH tcases = cases0(template_match_case) (* END *)
+    { TMatch (t, tcases) }
+  | LET defs = separated_nonempty_list(AND, let_def) IN tmpl = template
+    { TLet (defs, tmpl) }
+  | LET REC defs = separated_nonempty_list(AND, let_rec_def) IN tmpl = template
+    { TLetRec (defs, tmpl) }
+  | IF t_cond = comma_term THEN tmpl_true = template ELSE tmpl_false = template
+    { TConditional (t_cond, tmpl_true, tmpl_false) }
+  | id = ident t = simple_term
+    { TApply (id, t) }
+  | eff = effect LPAREN t = term SEMI id = ident DOT tmpl = template RPAREN
+    { TEffect (eff, t, id, tmpl) }
 
 %%

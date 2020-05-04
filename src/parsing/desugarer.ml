@@ -498,26 +498,10 @@ let rec desugar_template state {it= tmpl; at= loc} =
         let state'', tmpl' = desugar_template state' tmpl in
         ({state'' with context=state.context}, [], Template.Let (defs', tmpl'))
     | Sugared.TLetRec (defs, tmpl) ->
-        let aux_desugar (x, ty, abs) (fold_state, ns, forbidden) =
-          if List.mem x forbidden then
-            Error.syntax ~loc 
-            "Several definitions of recursive function `%s` inside equation." x ;
-          let n = fresh_var (Some x) in
-          ( {state with context= Assoc.update x n fold_state.context}
-          , n :: ns
-          , x :: forbidden )
-        in
-        let state', ns, _ = List.fold_right aux_desugar defs (state, [], []) in
-        let desugar_defs (n, (_, ty, c)) (st, defs) =
-          let st', c = desugar_let_rec st c in
-          let st'', ty = desugar_vtype Assoc.empty st' ty in
-          (st'', (n, ty, c) :: defs)
-        in
-        let state'', defs' = 
-          List.fold_right desugar_defs (List.combine ns defs) (state', [])
-        in
-        let state''', tmpl' = desugar_template state'' tmpl in
-        ({state'' with context=state.context}, [], Template.LetRec (defs', tmpl'))
+        Error.syntax ~loc 
+          ("Templates currently do not support a `let rec` constructor. "
+          ^^ "To use recursion, nest a `let rec` construct as a computation "
+          ^^ "term of a `let` template.")
     | Sugared.TMatch (t, tmpls) ->
         let desugar_case st (p, tmpl) =
           let st', p_vars, p' = desugar_pattern st p in
@@ -558,30 +542,24 @@ let rec desugar_template state {it= tmpl; at= loc} =
   | [] -> (state', add_loc tmpl' loc)
   | _ :: _ -> (state', add_loc (Template.Let (w, add_loc tmpl' loc)) loc)
 
-let desugar_tctx state {it=tctx; at=loc} =
-  let desugar_var (var_names, state) (var, varty) = 
+let desugar_equation_ctxs state ctx ~loc =
+  let desugar_var st (var, ty) = 
     let symb = 
-      match Assoc.lookup var var_names with
+      match Assoc.lookup var st.context with
       | None -> fresh_var (Some var)
       | Some _ ->
           Error.typing ~loc
-            ("Variable `%s` appears multiple times in the context of "
+            ("Variable `%s` appears multiple times in the context of the "
             ^^ "equation.") var
     in
-    match varty with
-    | Sugared.ValueTy ty ->
-        let state', ty' = desugar_vtype Assoc.empty state ty in
-        let names' = Assoc.update var symb var_names in
-        ((names', state'), (symb, Template.ValueTy ty'))
-    | Sugared.TemplateTy ty ->
-        let state', ty' = desugar_vtype Assoc.empty state ty in
-        let names' = Assoc.update var symb var_names in
-        ((names', state'), (symb, Template.TemplateTy ty'))
+    let st', ty' = desugar_vtype Assoc.empty st ty in
+    let ctx' = Assoc.update var symb st.context in
+    ({st' with context=ctx'}, (symb, ty'))
   in
-  let ((names, state'), desug_tctx) = 
-    fold_map desugar_var (Assoc.empty, state) tctx 
+  let (state', ctx') = 
+    fold_map desugar_var state ctx 
   in
-  (state', names, {it=Assoc.of_list desug_tctx; at=loc})
+  (state', Assoc.of_list ctx')
 
 
 (* ========== Desugaring of top level. ========== *)
@@ -639,14 +617,22 @@ let desugar_def_effect state (eff, (ty1, ty2)) =
 
 let desugar_def_theory state (theory, eqs, effs) =
   let state', th_symb = theory_to_symbol state theory in
-  let equation_desugarer st (tctx, tmpl1, tmpl2) =
-    let st', names, tctx' = desugar_tctx st tctx in
-    let st'', tmpl1' = 
-      desugar_template {st' with context=names} tmpl1 in
-    let st''', tmpl2' = 
-      desugar_template {st'' with context=names} tmpl2 in
-    (st''', (tctx', tmpl1', tmpl2'))
+  let equation_desugarer st {it= eqn; at= loc} =
+    (* Each equation defines its own context *)
+    let st0 = {st with context=Assoc.empty} in
+    let st1, ctx' = desugar_equation_ctxs ~loc st0 eqn.Sugared.ctx in
+    let st2, tctx' = desugar_equation_ctxs ~loc st1 eqn.Sugared.tctx in
+    let st3, tmpl1' = desugar_template st2 eqn.Sugared.left_tmpl in
+    let st4, tmpl2' = 
+      desugar_template {st3 with context=st2.context} eqn.Sugared.right_tmpl 
+    in
+    let eqn' =
+      { Template.ctx = ctx'; Template.tctx = tctx'
+      ; Template.left_tmpl = tmpl1'; Template.right_tmpl = tmpl2' }
+    in
+    (st4, add_loc eqn' loc)
   in
-  let state'', effs' = fold_map effect_to_symbol state effs in
+  let state'', effs' = fold_map effect_to_symbol state' effs in
   let state''', eqs' = fold_map equation_desugarer state'' eqs in
-  (state''', (th_symb, eqs', effs'))
+  (* Dont forget to restore the context of the program. *)
+  ({state''' with context=state.context}, (th_symb, eqs', effs'))
