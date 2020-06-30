@@ -54,12 +54,15 @@ type state = int
 effect Get : unit -> state
 effect Set : state -> unit
 
-theory state_theory for {Get, Set} is 
+theory getget for {Get} is 
   { . ; z : state * state -> * |- 
     Get((); y.Get(();w. z (y, w))) ~ Get((); y. z (y, y)) }
-  and
+
+theory setget for {Get, Set} is 
   { x : state ; z : state -> * |-
     Set(x; y.Get(();w. z w)) ~ Set(x; y. z x) }
+
+theory state_theory for {Get, Set} is getget and setget
 
 let state_handler : int!state_theory => state -> (int * state) = handler
   | effect Get () k -> (fun s -> k s s)
@@ -73,11 +76,6 @@ let test3_fun : unit -> int!{Get} = fun () -> !Get ()
 let test3 = with state_handler handle test3_fun ()
 
   
-type britney = int
-
-type 'a bitch = 'a list
-
-let its : britney bitch = ([] : int list)
 
 effect Choice : (int * int) -> int (*yeah yeah, not the right one*)
 

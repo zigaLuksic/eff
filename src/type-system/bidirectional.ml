@@ -112,7 +112,7 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
       && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
   | _, _ ->
       Error.typing ~loc 
-        ( "%t || %t" )
+        ( "Type %t is not a subtype of %t." )
         (Type.print_vty ([], ty1)) (Type.print_vty ([], ty2))
 
 and csubtype cty1 cty2 ~loc ~ctx = 
@@ -532,7 +532,7 @@ and computation_synth ctx c =
             (Type.print_vty ([], real_ty)) )
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
-        (* Warning: only lets true pure computations *)
+        (* Warning: only allows pure computations *)
         let synth_cty = computation_synth ctx c in
         let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
         if effs <> [] then
@@ -591,7 +591,6 @@ and computation_synth_check_effs ctx c allowed_effs =
   match c.it with
   | Syntax.Let (defs, c) ->
       let def_checker binds (p, c) =
-        (* Warning: only lets true pure computations *)
         let synth_cty = computation_synth_check_effs ctx c allowed_effs in
         let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
         if not (eff_subtype effs allowed_effs) then
