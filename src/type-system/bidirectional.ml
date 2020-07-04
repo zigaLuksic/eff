@@ -20,6 +20,26 @@ let extend_ctx ctx binds =
     (fun acc (x, ty) -> Ctx.extend acc x (Ctx.generalize ctx true ty)) 
     ctx binds
 
+let get_eff_type ~loc ~ctx = function
+  | Type.LocEff (eff, ty1, ty2) -> (eff, ty1, ty2)
+  | Type.GlobEff eff ->
+      match Ctx.infer_effect ctx eff with
+        | None ->
+            Error.typing ~loc 
+              ( "Effect `%t` has no known global type assignment. "
+              ^^ "Please provide a local or global type assignment." )
+              (CoreTypes.Effect.print eff)
+        | Some (ty1, ty2) -> (eff, ty1, ty2)
+
+let rec find_eff_in_sig ~loc ~ctx eff_name = function
+  | [] -> None
+  | eff::effs -> 
+      let (eff2, ty1, ty2) = get_eff_type ~loc ~ctx eff in
+      if eff_name = eff2 then 
+        Some (ty1, ty2)
+      else 
+        find_eff_in_sig eff_name ~loc ~ctx effs
+
 (* ========== Well formedness ========== *)
 (* We always assume that the context is well formed because we check before 
    extending the context. *)
@@ -45,17 +65,8 @@ let rec wf_vtype ~loc ctx ty =
 
 and wf_ctype ~loc ctx ty =
   match ty with
-  | Type.CTySig (vty, effs) -> 
-      let _ = wf_vtype ~loc ctx vty in
-      let checker eff =
-        match Ctx.infer_effect ctx eff with
-        | Some _ -> () 
-        | None ->
-            Error.typing ~loc
-              ( "Type `%t` is malformed.@, The effect `%t` is unknown.")
-              (Type.print_cty ([], ty)) (CoreTypes.Effect.print eff)
-      in 
-      List.iter checker effs
+  | Type.CTySig (vty, eff_sig) -> 
+      wf_vtype ~loc ctx vty; wf_sig ~loc ctx eff_sig
   | Type.CTyTheory (vty, theory) -> 
       let _ = wf_vtype ~loc ctx vty in
       match Ctx.infer_theory ctx theory with
@@ -65,15 +76,19 @@ and wf_ctype ~loc ctx ty =
             ( "Type `%t` is malformed.@, The theory `%t` is unknown.")
             (Type.print_cty ([], ty)) (CoreTypes.Theory.print theory)
 
-let wf_sig ~loc ctx effs =
-  let checker eff =
-    match Ctx.infer_effect ctx eff with
-    | Some _ -> () 
-    | None ->
-        Error.typing ~loc
-          ( "Signature `%t` is malformed.@, The effect `%t` is unknown.")
-          (Type.print_sig effs) (CoreTypes.Effect.print eff)
-  in 
+and wf_sig ~loc ctx effs =
+  let duplication_check checked = function
+    | Type.LocEff (eff, _, _) | Type.GlobEff eff ->
+        if not (List.mem eff checked) then eff :: checked else
+          Error.typing ~loc
+            ( "Effect `%t` occures multiple times in the signature `%t`.")
+            (CoreTypes.Effect.print eff) (Type.print_sig effs)
+  in
+  let checker eff = 
+    let (_, ty1, ty2) = get_eff_type ~loc ~ctx eff in
+    (wf_vtype ~loc ctx ty1; wf_vtype ~loc ctx ty2)
+  in
+  let _ = List.fold_left duplication_check [] effs in
   List.iter checker effs
 
 (* ========== Subtyping ========== *)
@@ -110,21 +125,24 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
   | Type.Apply (name1, tys1), Type.Apply (name2, tys2) ->
       CoreTypes.TyName.compare name1 name2 = 0
       && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
-  | _, _ ->
-      Error.typing ~loc 
-        ( "Type %t is not a subtype of %t." )
-        (Type.print_vty ([], ty1)) (Type.print_vty ([], ty2))
+  | _, _ -> false
 
 and csubtype cty1 cty2 ~loc ~ctx = 
   let vty1, effs1, eqs1 = deconstruct_cty ~loc ~ctx cty1 in
   let vty2, effs2, eqs2 = deconstruct_cty ~loc ~ctx cty2 in
   vsubtype ~loc ~ctx vty1 vty2
-  && eff_subtype effs1 effs2 && eqs_subtype eqs1 eqs2
+  && eff_subtype ~loc ~ctx effs1 effs2 && eqs_subtype eqs1 eqs2
 
-and eff_subtype effs1 effs2 = 
-  List.for_all (fun x -> List.mem x effs2) effs1 
+and eff_subtype effs1 effs2 ~loc ~ctx =
+  let rec check (eff1, ty11, ty12) = 
+    match find_eff_in_sig eff1 effs2 ~loc ~ctx with
+    | None -> false
+    | Some (ty21, ty22) ->
+        vsubtype ~loc ~ctx ty11 ty21 && vsubtype ~loc ~ctx ty12 ty22
+  in
+  List.for_all (fun x -> check (get_eff_type ~loc ~ctx x)) effs1 
 
-and eqs_subtype eqs1 eqs2 = 
+and eqs_subtype eqs1 eqs2 =
   List.for_all (fun x -> List.mem x eqs2) eqs1 
 
 
@@ -428,7 +446,7 @@ and computation_check ctx c cty =
         let synth_ty = computation_synth_check_effs ctx c effs in
         let (vty, synth_effs, synth_eqs) = deconstruct_cty ~loc ~ctx synth_ty in
         let b = pattern_check ctx p vty in
-        if not (eff_subtype synth_effs effs) then
+        if not (eff_subtype ~loc ~ctx synth_effs effs) then
           Error.typing ~loc:c.at
             ("Encountered effect signature missmatch of types @,`%t` and @,`%t` "
               ^^ "while resolving `let` definitions (possibly implicit). @,"
@@ -472,6 +490,25 @@ and computation_check ctx c cty =
       in
       List.iter def_checker defs;
       computation_check ctx' c cty
+  | Syntax.Effect (eff, arg) -> (
+      let (vty, effs, _) = deconstruct_cty cty ~ctx ~loc in
+      match find_eff_in_sig ~loc ~ctx eff effs with
+      | None ->
+          Error.typing ~loc 
+            ( "Effect `%t` is not present in the signature of type `%t`." )
+            (CoreTypes.Effect.print eff) (Type.print_cty ([], cty))
+      | Some (ty1, ty2) ->
+          value_check ctx arg ty1; 
+          if vsubtype ty2 vty ~loc ~ctx then ()
+          else 
+            Error.typing ~loc 
+            ( "Effect `%t` returns values of type `%t`, but was checked"
+            ^^ " against the computation type `%t`. @.The type `%t`"
+            ^^ " is not a subtype of `%t`." )
+            (CoreTypes.Effect.print eff) (Type.print_vty ([], ty2))
+            (Type.print_cty ([], cty)) (Type.print_vty ([], ty2))
+            (Type.print_vty ([], vty))
+    ) 
   | Syntax.Check c ->
       if csubtype ~loc ~ctx cty (Type.CTySig (Type.unit_ty, [])) then
         ignore (computation_synth ctx c)
@@ -575,10 +612,11 @@ and computation_synth ctx c =
       match Ctx.infer_effect ctx eff with
       | None ->
           Error.typing ~loc 
-            ( "Effect `%t` has no known type." )
+            ( "Effect `%t` has no known global type assignment. "
+            ^^ "Synthesis is only possible for effects with global types." )
             (CoreTypes.Effect.print eff)
       | Some (ty1, ty2) ->
-          value_check ctx arg ty1; Type.CTySig(ty2, [eff])
+          value_check ctx arg ty1; Type.CTySig(ty2, [GlobEff eff])
     )
   | Syntax.Check c -> 
       ignore (computation_synth ctx c); Type.CTySig (Type.unit_ty, [])
@@ -593,12 +631,12 @@ and computation_synth_check_effs ctx c allowed_effs =
       let def_checker binds (p, c) =
         let synth_cty = computation_synth_check_effs ctx c allowed_effs in
         let (vty, effs, eqs) = deconstruct_cty ~loc ~ctx synth_cty in
-        if not (eff_subtype effs allowed_effs) then
+        if not (eff_subtype ~loc ~ctx effs allowed_effs) then
           Error.typing ~loc:c.at 
             ("Encountered problem while synthesizing type of `let` "
               ^^ "definitions (possibly implicit). @,"
               ^^ "Possible effects are `%t`, @,but a check of an outer `let` "
-              ^^ "block restricted effects to %t. @,"
+              ^^ "block restricted effects to `%t`. @,"
               ^^ "Please provide better annotation for the outer `let` code block.")
             (Type.print_sig effs) (Type.print_sig allowed_effs)
         else
@@ -606,7 +644,17 @@ and computation_synth_check_effs ctx c allowed_effs =
         Assoc.concat binds b
       in
       let binds = List.fold_left def_checker Assoc.empty defs in
-      computation_synth (extend_ctx ctx binds) c
+      computation_synth_check_effs (extend_ctx ctx binds) c allowed_effs
+  | Syntax.Effect (eff, arg) -> (
+      match find_eff_in_sig ~loc ~ctx eff allowed_effs with
+      | None ->
+          Error.typing ~loc 
+            ( "Effect `%t` is not present in the signature `%t`." )
+            (CoreTypes.Effect.print eff) (Type.print_sig allowed_effs)
+      | Some (ty1, ty2) ->
+          value_check ctx arg ty1; 
+          (Type.CTySig (ty2, allowed_effs))
+    )
   | _ ->
       computation_synth ctx c
 
@@ -614,31 +662,34 @@ and computation_synth_check_effs ctx c allowed_effs =
 (* ========== Operation cases ========== *)
 
 and effect_clauses_check ~loc ctx ops (effs, ty2) =
+  let rec find_eff_ty ~loc eff1 = function
+    | [] -> 
+        Error.typing ~loc 
+        ( "Effect `%t` is not part of the handler signature `%t`" )
+        (CoreTypes.Effect.print eff1) (Type.print_sig effs)
+    | eff::effs ->
+        let (eff2, ty1, ty2) = get_eff_type eff ~loc ~ctx in
+        if eff1 = eff2 then (ty1, ty2) else find_eff_ty ~loc eff1 effs
+  in
   let rec checker (eff, (px, pk, c_op)) =
-    match Ctx.infer_effect ctx eff with
-    | None ->
-        Error.typing ~loc:px.at 
-          ( "Effect `%t` has no known type." )
-          (CoreTypes.Effect.print eff)
-    | Some (eff_ty1, eff_ty2) ->
-        if List.mem eff effs then
-          let ctx' = extend_ctx ctx (pattern_check ctx px eff_ty1) in
-          let ctx'' = 
-            extend_ctx ctx' (pattern_check ctx pk (Type.Arrow (eff_ty2, ty2)))
-          in
-          computation_check ctx'' c_op ty2
-        else
-          Error.typing ~loc:px.at 
-          ( "Effect `%t` is not part of the handler signature `%t`." )
-          (CoreTypes.Effect.print eff) (Type.print_sig effs)
+    let (eff_ty1, eff_ty2) = find_eff_ty ~loc:px.at eff effs in
+      let ctx' = extend_ctx ctx (pattern_check ctx px eff_ty1) in
+      let ctx'' = 
+        extend_ctx ctx' (pattern_check ctx pk (Type.Arrow (eff_ty2, ty2)))
+      in
+      computation_check ctx'' c_op ty2
   in
   let handled_effs = Assoc.keys_of ops in
-  if eff_subtype effs (handled_effs) then
+  let effs_in_sig = 
+    effs |> List.map (get_eff_type ~loc ~ctx) |> List.map (fun (e,_,_) -> e)
+  in
+  if List.for_all (fun x -> List.mem x handled_effs) effs_in_sig then
     Assoc.iter checker ops
   else
     Error.typing ~loc
       ( "Handler implements effects `%t` @, but is meant to implement `%t`." )
-      (Type.print_sig handled_effs) (Type.print_sig effs)
+      (Print.sequence ", " CoreTypes.Effect.print handled_effs) 
+      (Type.print_sig effs)
 
 (* ========== Template well formedness ========== *)
 
@@ -676,19 +727,16 @@ let rec wf_template ctx tctx effs {it=t; at=loc} =
       let binds = List.fold_left def_checker Assoc.empty defs in
       wf_template (extend_ctx ctx binds) tctx effs t
   | Template.Effect (eff, v, y, t) ->
-      if not (List.mem eff effs) then
-        Error.typing ~loc
-            ("Encountered an unknown effect `%t` when checking well formedness"
-            ^^ " of equation. @,Only effects `%t`, @,for which the theory is"
-            ^^ " being defined, @,can be used in equations.")
-            (CoreTypes.Effect.print eff) (Type.print_sig effs)
-      else
-        match SimpleCtx.infer_effect ctx eff with
-        | None -> 
-            failwith "Why did well formedness of the signature not catch this?"
-        | Some (inty, outty) ->
-            value_check ctx v inty;
-            wf_template (SimpleCtx.extend ctx y ([], outty)) tctx effs t
+      match find_eff_in_sig eff effs ~loc ~ctx with
+      | None ->
+          Error.typing ~loc 
+          ("Encountered an unknown effect `%t` when checking well formedness"
+          ^^ " of equation. @,Only effects `%t`, for which the theory is"
+          ^^ " being defined, can be used in equations.")
+          (CoreTypes.Effect.print eff) (Type.print_sig effs)
+      | Some (ty1, ty2) ->
+          value_check ctx v ty1;
+          wf_template (SimpleCtx.extend ctx y ([], ty2)) tctx effs t
 
 
 let wf_eq_ctx ctx eq_ctx ~loc =
@@ -711,7 +759,7 @@ let wf_inherited_theory ctx theory effs ~loc =
         ("Encountered an unknown theory `%t` from which equations are"
         ^^ " to be inherited.") (CoreTypes.Theory.print theory)
   | Some (th_eqs, th_effs) ->
-      if eff_subtype th_effs effs then th_eqs else
+      if eff_subtype ~loc ~ctx th_effs effs then th_eqs else
         Error.typing ~loc
         ("Signature missmatch when trying to inherit equations of theory `%t`."
         ^^" @,Signature `%t` is not a subtype of `%t`.")

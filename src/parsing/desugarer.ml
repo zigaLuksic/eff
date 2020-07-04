@@ -92,7 +92,7 @@ and desugar_ctype type_sbst state ty =
   match ty.it with
   | Sugared.TyCTySig (vty, effs) ->
       let state', vty' = desugar_vtype type_sbst state vty in
-      let state'', effs' = fold_map effect_to_symbol state' effs in
+      let state'', effs' = fold_map (desugar_eff type_sbst) state' effs in
       (state'', T.CTySig (vty', effs'))
   | Sugared.TyCTyTheory (vty, theory) ->
       let state', vty' = desugar_vtype type_sbst state vty in
@@ -103,6 +103,16 @@ and desugar_ctype type_sbst state ty =
       (* Auto-transform to pure computation type *)
       let state', vty' = desugar_vtype type_sbst state ty in
       (state', T.CTySig(vty', []))
+
+and desugar_eff type_sbst state = function
+  | Sugared.LocEff (eff, ty1, ty2) ->
+      let state', eff' = effect_to_symbol state eff in
+      let state'', ty1' = desugar_vtype type_sbst state' ty1 in
+      let state''', ty2' = desugar_vtype type_sbst state'' ty2 in
+      (state''', T.LocEff (eff', ty1', ty2'))
+  | Sugared.GlobEff eff ->
+      let state', eff' = effect_to_symbol state eff in
+      (state', T.GlobEff eff')
 
 (** [free_type_params t] returns all free type params in [t]. *)
 let free_type_params t =
@@ -636,7 +646,7 @@ let desugar_def_theory state (theory, th_defs, effs) =
         let st', theory' = theory_to_symbol st theory in
         (st', Template.Theory theory')
   in
-  let state'', effs' = fold_map effect_to_symbol state' effs in
+  let state'', effs' = fold_map (desugar_eff Assoc.empty) state' effs in
   let state''', eqs' = fold_map defs_desugarer state'' th_defs in
   (* Dont forget to restore the context of the program. *)
   ({state''' with context=state.context}, (th_symb, eqs', effs'))

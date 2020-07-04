@@ -106,7 +106,7 @@ plain_topdef:
     { Commands.External (x, t, n) }
   | EFFECT eff = effect COLON t1 = ty_apply ARROW t2 = ty
     { Commands.DefEffect (eff, (t1, t2))}
-  | THEORY theory = theory FOR LBRACE effs = separated_list(COMMA, effect) RBRACE IS th_defs = theory_defs
+  | THEORY theory = theory FOR LBRACE effs = separated_list(COMMA, effect_in_sig) RBRACE IS th_defs = theory_defs
     { Commands.DefTheory (theory, th_defs, effs) }
 
 
@@ -453,7 +453,7 @@ defined_ty:
 
 ty: mark_position(plain_ty) { $1 }
 plain_ty:
-  | t = ty_apply EXCLAMATION LBRACE effs = separated_list(COMMA, effect) RBRACE
+  | t = ty_apply EXCLAMATION LBRACE effs = separated_list(COMMA, effect_in_sig) RBRACE
     { TyCTySig(t, effs) }
   | t = ty_apply EXCLAMATION theory = theory
     { TyCTyTheory(t, theory) }
@@ -496,6 +496,12 @@ sum_case:
     { (lbl, None) }
   | lbl = UNAME OF t = ty
     { (lbl, Some t) }
+
+effect_in_sig:
+  | eff = effect
+    { GlobEff eff }
+  | eff = effect COLON ty1 = prod_ty ARROW ty2 = prod_ty
+    { LocEff (eff, ty1, ty2) }
 
 effect:
   | eff = UNAME

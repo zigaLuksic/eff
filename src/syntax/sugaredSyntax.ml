@@ -22,8 +22,12 @@ and plain_ty =
   | TyArrow of ty * ty  (** [ty1 -> ty2] *)
   | TyTuple of ty list  (** [ty1 * ty2 * ... * tyn] *)
   | TyHandler of ty * ty  (** [ty1 => ty2] *)
-  | TyCTySig of ty * effect list (** [ty!{eff1, eff2, ...}] *)
+  | TyCTySig of ty * eff_ty list (** [ty!{eff1, eff2, ...}] *)
   | TyCTyTheory of ty * theory (** [ty!{theory}] *)
+
+and eff_ty =
+  | LocEff of effect * ty * ty
+  | GlobEff of effect
 
 type tydef =
   | TySum of (label, ty option) Assoc.t
@@ -94,11 +98,6 @@ and plain_template =
 type equation = plain_equation located
 
 and plain_equation = {ctx: tctx; tctx: tctx; left_tmpl: template; right_tmpl: template}
-
-let tplacebo = 
-  { it= TApply ("Todo", {it= (Var "Todo"); at=Location.unknown})
-  ; at= Location.unknown }
-
 
 type theory_def =
   | Equation of equation

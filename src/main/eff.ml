@@ -102,7 +102,7 @@ let toplevel execute_source state =
   Format.fprintf !Config.output_formatter
     "[Type %s to exit or #help;; for help.]@." eof ;
   Format.fprintf !Config.output_formatter 
-    ( "Warning:@.  @[<hov>Parametrised data types treat all type parameters as a covariant position. @,"
+    ( "Warning:@.  @[<hov>Parametrised data types currently treat all type parameters as a covariant position. @,"
     ^^ "This can lead to errors when subtyping. Avoid contravariant positions if possible.@.@]" );
   let state = ref state in
   Sys.catch_break true ;

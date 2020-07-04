@@ -15,7 +15,7 @@ and plain_command =
       (** [external x : t = "ext_val_name"] *)
   | DefEffect of (Sugared.effect * (Sugared.ty * Sugared.ty))
       (** [effect Eff : ty1 -> t2] *)
-  | DefTheory of (Sugared.theory * Sugared.theory_def list * Sugared.effect list)
+  | DefTheory of (Sugared.theory * Sugared.theory_def list * Sugared.eff_ty list)
   | Term of Sugared.term
   | Use of string  (** [#use "filename.eff"] *)
   | Help  (** [#help] *)

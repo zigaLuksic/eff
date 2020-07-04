@@ -29,10 +29,10 @@ effect InvalidArgument : string -> empty
 
 effect Failure : string -> empty
 
-effect AssertionFault : unit -> empty
+effect AssertionFault: unit -> empty
 
 let assert : bool -> unit!{AssertionFault} =
-  fun b -> if b then () else match (!AssertionFault ()) with;;
+  fun b -> if b then () else (match (!AssertionFault ()) with);;
 
 external ( ~- ) : int -> int = "~-"
 

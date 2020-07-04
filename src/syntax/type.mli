@@ -12,7 +12,11 @@ and cty =
   | CTySig of vty * eff_sig
   | CTyTheory of vty * CoreTypes.Theory.t
 
-and eff_sig = CoreTypes.Effect.t list
+and eff =
+  | LocEff of CoreTypes.Effect.t * vty * vty
+  | GlobEff of CoreTypes.Effect.t
+
+and eff_sig = eff list
 
 val int_ty : vty
 

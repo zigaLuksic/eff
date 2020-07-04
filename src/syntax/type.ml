@@ -16,7 +16,11 @@ and cty =
   | CTySig of vty * eff_sig
   | CTyTheory of vty * CoreTypes.Theory.t
 
-and eff_sig = CoreTypes.Effect.t list
+and eff =
+  | LocEff of CoreTypes.Effect.t * vty * vty
+  | GlobEff of CoreTypes.Effect.t
+
+and eff_sig = eff list
 
 
 let int_ty = Basic Const.IntegerTy
@@ -48,8 +52,13 @@ let rec subst_ty sbst ty =
     | Handler (cty1, cty2) ->
         Handler (csubst cty1, csubst cty2)
   and csubst = function
-    | CTySig (vty, eff_sig) -> CTySig (vsubst vty, eff_sig)
+    | CTySig (vty, eff_sig) -> CTySig (vsubst vty, effsig_subst eff_sig)
     | CTyTheory (vty, eff_theory) -> CTyTheory (vsubst vty, eff_theory)
+  and effsig_subst = function
+    | [] -> []
+    | GlobEff eff :: eff_sig -> GlobEff eff :: effsig_subst eff_sig
+    | LocEff (eff, vty1, vty2) :: eff_sig ->
+        LocEff (eff, vsubst vty1, vsubst vty2) :: effsig_subst eff_sig
   in
   vsubst ty
 
@@ -68,8 +77,13 @@ let free_params ty =
     | Arrow (ty, cty) -> free_vty ty @ free_cty cty
     | Handler (cty1, cty2) -> free_cty cty1 @ free_cty cty2
   and free_cty = function
-    | CTySig (vty, eff_sig) -> free_vty vty
+    | CTySig (vty, eff_sig) -> free_vty vty @ free_effsig eff_sig
     | CTyTheory (vty, eff_theory) -> free_vty vty
+  and free_effsig = function
+    | [] -> []
+    | GlobEff eff :: eff_sig -> free_effsig eff_sig
+    | LocEff (eff, vty1, vty2) :: eff_sig ->
+        free_vty vty1 @ free_vty vty2 @ free_effsig eff_sig
   in
   CoreUtils.unique_elements (free_vty ty)
 
@@ -133,7 +147,14 @@ and print_cty (ps, cty) ppf =
         (print_vty (ps, vty)) (CoreTypes.Theory.print theory)
 
 and print_sig (effs) ppf =
-  let print_effty eff ppf = CoreTypes.Effect.print eff ppf in
+  let print_effty eff ppf = 
+    match eff with
+    | LocEff (eff, vty1, vty2) ->
+      Print.print ppf "@[<hov>(%t:%t ->@ %t)@]"
+        (CoreTypes.Effect.print eff)
+        (print_vty ([], vty1)) (print_vty ([], vty1))
+    | GlobEff eff -> CoreTypes.Effect.print eff ppf 
+  in
   Print.print ppf "@[<hov>{%t}@]"
     (Print.sequence ", " (print_effty) (effs))
 

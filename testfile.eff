@@ -99,7 +99,7 @@ theory nondet for {Choice} is eqn_comm and eqn_idem and
 theory bad_test for {Choice} is eqn_comm and eqn_idem and bad_eqn
 *)
 
-theory test for {Choice} is eqn_comm and eqn_idem
+theory test for {Choice: int*int -> int} is eqn_comm and eqn_idem
 
 (* This one correctly gueses the subtype *)
 let x : unit!nondet = (() : unit!test)
