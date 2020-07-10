@@ -1,0 +1,169 @@
+(* This quick guide assumes some familiarity with Eff. We suggest a glance
+   at the `master` branch examples for newcommers. Similarly we assume
+   some degree of familiarity with the theoretical background of local
+   algebraic effect theories (https://arxiv.org/pdf/2005.13654.pdf) *) 
+
+(* ========== CHANGES FROM EFF ========== *)
+
+(* Invoking effects has a different syntax *)
+(* `perform (Eff x)` is now `!Eff x` *)
+
+let _ = !Print "This is nicer.\n"
+
+(* Polymorphism is gone. :( *)
+(* Type definitions can use type variables but need to be instantiated before
+   use. See `yield_and_trees.eff` example for more info. *)
+
+(* There is no `finally` clause in handlers. Value case requires `val`. *)
+let trivial_handler : int => int = handler
+  | val x -> x
+
+(* Conditionals are desugared to `match` statements (as in Eff), which now
+   results in odd error messages. The desugaring has not yet been fully adapted
+   to the bidirectional type system. *)
+(* let odd_error : int = if 2 then 1 else 0 *)
+
+(* ========== ANNOTATIONS ========== *) 
+let _ = !Print "\n Annotations: \n"
+
+(* With the switch to a bidirectional type system also come additional
+   requirements for type annotation. This is fine in the setting of
+   local theories, as theories cannot be inferred. *)
+
+(* We can annotate term. *)
+let x = (1 : int)
+
+(* If we annotate the pattern in `let` it currently only carries it over to 
+   the definition. *)
+let x : int = 1
+
+(* This is a bit unsatisfactory for functions, but will be improved. *)
+let f : int -> int = fun x -> x (* works *)
+(* let (f : int -> int) x = x (* doesnt work yet *) *)
+
+(* Recursive functions ALWAYS require to be annotated. The annotations must be
+   `let rec (name : A -> B) arg = body`. *)
+let rec (f : int -> int) x = x
+let rec (g : int -> unit -> bool) x y = false
+
+(* When annotating terms with effects, we need to use types `A!{Eff}`. *)
+let randx : int!{RandomInt} = !RandomInt 100
+(* Even when effects are hidden in functions! *)
+let rand_print : unit!{Print, RandomInt} = print_int (!RandomInt 100)
+
+(* The type system does not try to unify multiple branches of computation.
+   This causes `match` statements to require annotation, which is fine since
+   they are mostly used in functions. This extends to conditionals. *)
+
+(* ========== LOCAL EFFECTS ========== *) 
+let _ = !Print "\n Effects: \n"
+
+(* Effect signatures are now local. We still allow global definitions, but
+   they can be overriden at the local level. 
+   We encourage the use of global effect annotations because they allow 
+   the type system to synthesize the type of operations. The cases where
+   an operation should change its type are rare. *)
+
+effect Ping : unit -> unit
+
+let with_global : unit -> unit!{Ping} =
+  fun () -> !Ping ()
+
+let with_local : unit -> unit!{Ping : float -> unit} = 
+  fun () -> !Ping 2.8537
+
+(* Effect subtyping is included. :D *)
+
+let subtype_test : unit -> unit!{Print, Ping} = with_global
+
+(* If local effects are to be used, one must supply their types. *)
+
+let loc_test : unit -> float!{MakeFloat : unit -> float, Ping, Print} =
+  fun () -> !MakeFloat ()
+
+(* The desugarer tries to help with types.
+    `int -> int -> int` is actually `int -> (int -> int!{})!{}`.
+   This can cause some funky error messages. *)
+
+
+
+(* ========== THEORIES ========== *) 
+let _ = !Print "\n Theories: \n"
+
+(* While theories are local, they need to be defined globally. This comes
+   from the rather large specification, which is not suitable for direct
+   type annotations. *)
+
+(* A theory can contain no equations (and does so by default). *)
+theory trivial_theory for {Ping} is {}
+
+(* This is useful when dealing with large signatures. *)
+theory legion for {Ping, Print, MakeFloat : unit -> float, RandomFloat} is {}
+
+(* Now types can be a lot shorter. :D *)
+let long_sig : unit -> unit!{Ping, Print, RandomFloat} = fun () -> ()
+let short_sig : unit -> unit!legion = fun () -> ()
+let subtyping_also_works = (long_sig : unit -> unit!legion)
+
+
+(* The syntax for equations is:
+      `{ctx ; tctx |- T1 ~ T2}`
+
+    An empty contex is denoted with `.`, but is otherwise a comma separated
+    sequence of types. The types in the template context are of shape
+    `A -> *` and if the wildcard `*` is not provided, it results in a
+    parser error. 
+
+    Templates T1 and T2 use the explicit continuation form, so instead of
+    `let y = !Eff x in ...` one writes `Eff(x; y. ...)`. Here `y` needs to
+    be a variable and not a pattern. This includes `_`, but will be improved.
+
+    Do remember that all template branches need to end in a template variable
+    and any computation in `let x = c in ...` must be pure. *)
+
+(* An example that tells `!Ping (); !Ping () ~ !Pong()`. *)
+theory ping_pong for {Ping : unit -> unit, Pong : unit -> unit} is
+  { . ; z : unit -> * |-
+    Ping((); u.Ping((); u'. z ())) ~ Pong((); u. z ()) }
+
+(* For readability we require that equations are singletons, combined with
+   the keyword `and`. Even better, we can also inherit equations from
+   previously defined theories. That is in fact encouraged as it allows
+   subtyping. *)
+
+effect Choice : (int * int) -> int
+
+theory eqn_comm for {Choice} is
+  { x:int, y:int ; z:int -> * |-
+    Choice((x,y); w.z w) ~ Choice((y,x); w.z w) }
+
+theory eqn_idem for {Choice} is
+  { x:int; z:int -> * |- Choice((x,x); w.z w) ~ z x }
+
+(* A mixed definition also works. *)
+theory nondet for {Choice} is eqn_comm and eqn_idem and 
+  { x:int, y:int, w:int; z:int -> * |-
+      Choice((x,y); r. Choice((r,w); q. z q))
+      ~
+      Choice((y,w); r. Choice((x,r); q. z q)) }
+
+
+(* We can always inherit equations to a theory with a superset of effects,
+   but never into a smaller set of effects. *)
+
+theory inherit_check for {Choice, Print} is nondet
+
+(* ========== HANDLERS ========== *) 
+let _ = !Print "\n Handlers: \n"
+
+(* The logic used by the type system is not sound. This means that handlers
+   are always assumed to be correct with respect to the assigned theory.
+   The user must therefore check handler correctness separately.
+   Moving forward we hope to link the implementation of EEFF with its
+   formalisation, to make this easier for the user. *)
+
+let correct_h : int!eqn_idem => int!{} = handler
+  | effect Choice (a, b) k -> k a
+
+let incorrect_h : int!eqn_idem => int!{} = handler
+  | effect Choice (a, b) k -> k 0

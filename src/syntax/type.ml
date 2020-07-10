@@ -126,7 +126,7 @@ let rec print_vty (ps, vty) ppf =
         print ~at_level:2 "@[<hov>%t@]"
           (Print.sequence " * " (print_vty ~max_level:1) ts)
     | Handler (ty1, ty2) ->
-        print ~at_level:4 "%t =>@ %t" 
+        print ~at_level:4 "@[<h>%t =>@ %t@]" 
         (print_cty (ps, ty1)) (print_cty (ps, ty2))
   in
   print_vty vty ppf

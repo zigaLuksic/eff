@@ -1,0 +1,79 @@
+(* We abstract away the type of state for nicer types. *)
+type state = int
+
+effect Get : unit -> state
+effect Set : state -> unit
+
+(* Separate equations, so we can test some subtyping later. *)
+theory getget for {Get} is 
+  { . ; z : state * state -> * |- 
+    Get((); s1.Get((); s2. z (s1, s2))) ~ Get((); s1. z (s1, s1)) }
+
+theory setget for {Get, Set} is 
+  { x : state ; z : state -> * |-
+    Set(x; u.Get((); s. z s)) ~ Set(x; u. z x) }
+
+theory setset for {Set} is 
+  { x : state, y : state ; z : unit -> * |- 
+    Set(x; u.Set(y; u'. z ())) ~ Set(y; u. z ()) }
+
+theory getset for {Get, Set} is
+  { . ; z : unit -> * |-
+    Get((); s.Set(s; u. z ())) ~ z () }
+
+theory weak_getset for {Get, Set} is
+  { . ; z : state -> * |-
+    Get((); s.Set(s; u. z s)) ~ Get((); s. z s) }
+
+
+(* Combine into full theories *)
+theory state_theory for {Get, Set} is 
+  getget and setget and setset and getset
+
+theory weak_state_theory for {Get, Set} is
+  getget and setget and setset and weak_getset
+
+
+(* The standard state handler *)
+let state_handler : int!weak_state_theory => (state -> (int * state)) = handler
+  | effect Get () k -> (fun s -> k s s)
+  | effect Set s k -> (fun _ -> k () s)
+  | val x -> (fun s -> (x, s))
+
+(* We can write a handler for switching between theories. The correctness
+   verification is precisely that all equations on the left of => follow
+   from the equations on the right. *)
+let theory_coercion : int!weak_state_theory => int!state_theory = handler
+  | effect Get () k -> k (!Get ())
+  | effect Set s k -> k (!Set s)
+  | val x -> x
+
+
+(* Testing *)
+
+let test_handler = with state_handler handle !Set(10 + !Get ()); !Get () + 2
+let res = test_handler 0
+
+let test_subtype : int -> int!state_theory = 
+  fun x -> (!Get () + x * !Get () : int!getget)
+
+(* Fails because setset does not contain Get in the signature *)
+(*
+let test_subtype_fail : int -> int!setset = 
+  fun x -> !Get () + x * !Get () 
+*)
+
+let f_weak : unit -> int!weak_state_theory = 
+  fun () -> !Set 10; !Get ()
+
+let f : unit -> int!state_theory = 
+  fun () -> with theory_coercion handle f_weak ()
+
+let test_correct_theory = 
+  with state_handler handle f_weak ()
+
+(* Fails because the theories do not match and are not subtypable *)
+(*
+let test_wrong_theory = 
+  with state_handler handle f ()
+*)

@@ -1,0 +1,107 @@
+(* Because we have no polymorphism we need to define concatenation
+   for the specific list type. *)
+
+let rec ((@) : int list -> int list -> int list) lst1 lst2 =
+  match lst1 with
+  | [] -> lst2
+  | x :: xs -> x :: (xs @ lst2)
+
+
+
+(* Define theory *)
+effect Choice : unit -> bool
+
+theory eqn_idem for {Choice} is
+  { . ; z : unit -> * |- 
+    Choice((); b. if b then z () else z ()) ~ z () }
+
+theory eqn_comm for {Choice} is
+  { . ; z1 : unit -> *, z2 : unit -> * |-
+    Choice((); b. if b then z1 () else z2 ()) 
+    ~ 
+    Choice((); b. if b then z2 () else z1 ()) }
+
+theory eqn_assoc for {Choice} is
+  { . ; z1 : unit -> *, z2 : unit -> *, z3 : unit -> * |-
+    Choice((); b. 
+      if b then z1 () 
+      else Choice((); b'. if b' then z2 () else z3 ())) 
+    ~ 
+    Choice((); b. 
+      if b then Choice((); b'. if b' then z1 () else z2 ())
+      else z3 ())  }
+
+theory idem_assoc for {Choice} is 
+  eqn_idem and eqn_assoc
+
+theory nondet for {Choice} is 
+  idem_assoc and eqn_comm
+
+
+
+(* Define some functions *)
+
+let choose : int -> int -> int!eqn_comm = fun x y -> 
+  if !Choice () then x else y
+
+let rec (choose_from_list : int list -> (int option)!eqn_assoc) = function
+  | [] -> None
+  | x :: xs -> if !Choice () then Some x else choose_from_list xs
+
+
+
+(* Define some handlers *)
+
+let pick_left : int!idem_assoc => int = handler
+  | effect Choice _ k -> k true
+
+let to_list : int!eqn_assoc => int list = handler
+  | effect Choice _ k -> k true @ k false
+  | val x -> [x]
+
+let find_max : int!nondet => int = handler
+  | effect Choice _ k -> max (k true) (k false)
+
+
+
+(* Do some tests, mostly for subtyping purposes. *)
+
+let test1 = 
+  with to_list handle 
+    match choose_from_list [1;2;3;4;3;2;1] with
+    | None -> 0
+    | Some x -> x
+
+(* fails because to_list does not implement eqn_comm *)
+(*
+let test2 = 
+  with to_list handle choose 1 2
+*)
+
+(* works because nondet is supertype of eqn_assoc despite depth 2 inheritance *)
+let test3 = 
+  with find_max handle 
+    match choose_from_list [1;2;3;4;3;2;1] with
+    | None -> 0
+    | Some x -> x
+
+
+
+(* Having fun with local theories :D *)
+(* Same Choice, different type! *)
+
+theory eqn_idem_alt for {Choice : int * int -> int} is
+  { a : int ; z : int -> * |- 
+    Choice((a, a); y. z y) ~ z a }
+
+(* We can switch between them. *)
+let transformer 
+  : int!{Choice : int * int -> int} => int!{Choice : unit -> bool}
+  = handler
+  | effect Choice (x, y) k -> if !Choice () then x else y
+
+(* And then use the old handlers because we are lazy! *)
+let test4 =
+  with find_max handle
+  with transformer handle
+    !Choice (1, 5) + !Choice (7, 2) * !Choice (2, 1)

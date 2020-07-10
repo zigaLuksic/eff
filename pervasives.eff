@@ -93,7 +93,6 @@ external string_of_float : float -> string  = "string_of_float"
 
 external string_of_int : int -> string  = "string_of_int"
 
-external to_string : 'a -> string  = "to_string"  (*Unsafe for compilation*)
 
 (* Booleans *)
 let (not : bool -> bool) x = if x then false else true
@@ -121,152 +120,31 @@ let ((>=.) : float -> float -> bool) x y = (y <=. x)
 
 let ((<>.) : float -> float -> bool) x y = not (x =. y)
 
-(*
-(* Lists *)
+(* Option *)
 type 'a option = None | Some of 'a
 
-let rec assoc x = function
-  | [] -> None
-  | (key, v) :: lst -> if x = key then Some v else assoc x lst
+(* Lists *)
 
-let rec range m n =
-  if m > n then
-    []
-  else
-    m :: range (m + 1) n
-
-let reverse lst =
-  let rec reverse_acc acc = function
-    | [] -> acc
-    | x :: xs -> reverse_acc (x :: acc) xs
-  in
-  reverse_acc [] lst
-
-let rec map f = function
-  | [] -> []
-  | x :: xs ->
-    let y = f x in
-    let ys = map f xs in
-    y :: ys
-
-let hd = function
-  | [] ->  absurd (perform (InvalidArgument "head: empty list"))
-  | x :: _ -> x
-
-let tl = function
-  | [] ->  absurd (perform (InvalidArgument "tail: empty list"))
-  | x :: xs -> xs
-
-let take f k =
-  let r = range 0 k in map f r
-
-let rec fold_left f acc = function
-  | [] -> acc
-  | y :: ys ->
-    let acc' = f acc y in
-    fold_left f acc' ys
-
-let rec fold_right f xs acc =
-  match xs with
-    | [] -> acc
-    | x :: xs ->
-      let acc' = fold_right f xs acc in
-      f x acc'
-
-let rec iter f = function
-  | [] -> ()
-  | x :: xs -> f x; iter f xs
-
-let rec forall p = function
-  | [] -> true
-  | x :: xs -> if p x then forall p xs else false
-
-let rec exists p = function
-  | [] -> false
-  | x :: xs -> if p x then true else exists p xs
-
-let mem x = exists (fun x' -> x = x')
-
-let rec filter p = function
-  | [] -> []
-  | x :: xs ->
-    if p x then (x :: filter p xs) else filter p xs
-
-let complement xs ys = filter (fun x -> not (mem x ys)) xs
-
-let intersection xs ys = filter (fun x -> mem x ys) xs
-
-let rec zip xs ys =
-  match (xs, ys) with
-  | ([], []) -> []
-  | (x :: xs, y :: ys) -> (x, y) :: (zip xs ys)
-  | (_, _) -> absurd (perform (InvalidArgument "zip: length mismatch"))
-
-let rec unzip = function
-  | [] -> ([], [])
-  | (x, y) :: xys ->
-    let xs, ys = unzip xys in
-    (x :: xs, y :: ys)
-
-let rec (@) xs ys =
-  match xs with
-  | [] -> ys
-  | x :: xs -> x :: (xs @ ys)
-
-let rec length = function
-  | [] -> 0
-  | x :: xs -> length xs + 1
+let rec (range : int -> int -> int list) m n =
+  if m > n then []
+  else m :: range (m + 1) n
 
 (* Basic functions *)
-let abs x = if x < 0 then -x else x
+let abs : int -> int = fun x -> if x < 0 then -x else x
 
-let min x y = if x < y then x else y
+let min : int -> int -> int = fun x y -> if x < y then x else y
 
-let max x y = if x < y then y else x
+let max : int -> int -> int = fun x y -> if x < y then y else x
 
-let rec gcd m n =
-  match n with
-  | 0 -> m
-  | _ -> let g = gcd n in g (m mod n)
+let odd : int -> bool = fun x -> (x mod 2 = 1)
 
-let rec lcm m n =
-  let d = gcd m n in (m * n) / d
+let even : int -> bool = fun x -> (x mod 2 = 0)
 
-let odd x = (x mod 2 = 1)
 
-let even x = (x mod 2 = 0)
+(* Prints *)
 
-let id x = x
+let print_int : int -> unit!{Print} = fun x -> !Print (string_of_int x)
 
-let compose f g x = f (g x)
+let print_string : string -> unit!{Print} = fun str -> !Print str
 
-let (|>) x f = f x
-
-let ignore _ = ()
-
-let fst (x, _) = x
-
-let snd (_, y) = y
-
-let print v =
-  let s = to_string v in
-  perform (Print s)
-
-let print_string str =
-  perform (Print str)
-
-let print_endline str =
-  perform (Print (str ^ "\n"))
-
-(* Basic Handlers *)
-(*
-effect Lookup: int
-effect Update: int -> unit
-
-let state initial = handler
-  | y -> (fun _ -> y)
-  | effect Lookup k -> (fun s -> continue k s s)
-  | effect (Update s) k -> (fun _ -> continue k () s)
-  | finally f -> f initial;;
-*)
-*)
+let print_endline : string -> unit!{Print} = fun str -> !Print (str ^ "\n")

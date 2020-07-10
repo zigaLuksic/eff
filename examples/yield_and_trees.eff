@@ -1,0 +1,56 @@
+(* Just a short example to check that type definitions work. *)
+(* WARNING: The type system currently has no mechanism for distinguishing
+    between covariant and contravariant positions and treats all positions
+    as covariatn. This will be fixed in later versions via user provided
+    annotations that are then checked to be correct. *)
+
+
+type 'a tree = Empty | Node of 'a tree * 'a * 'a tree
+
+(* Type variables are allowed in definitions but not annotations. Therefore
+   the type system refuses to work with data types such as lists without
+   unless a specific type is provided. The term `Empty` can only be used
+   if it is clear what 'a is. *)
+
+
+
+(* Tree traversal *)
+effect Yield : int -> unit
+
+let rec (tree_yield : int tree -> unit!{Yield}) = function
+  | Empty -> ()
+  | Node (lt, x, rt) -> tree_yield lt; !Yield x; tree_yield rt
+
+let rec (cond_tree_yield : (int -> bool) -> int tree -> unit!{Yield}) cond tree =
+  let cond_yield : int -> unit!{Yield} = 
+    (* Conditionals branch and want annotations *)
+    fun x -> if cond x then !Yield x else () 
+  in
+  match tree with
+  | Empty -> ()
+  | Node (lt, x, rt) -> 
+      cond_tree_yield cond lt; cond_yield x ; cond_tree_yield cond rt
+
+
+
+(* Handlers *)
+let yield_sum : unit!{Yield} => int = handler
+  | effect Yield x k -> x + k ()
+  | val () -> 0
+
+let yield_to_list : unit!{Yield} => int list = handler
+  | effect Yield x k -> x :: k ()
+  | val () -> []
+
+
+
+(* Tests *)
+let leaf : int -> int tree = fun x -> Node (Empty, x, Empty)
+
+let test_tree : int tree = (Node (leaf 1, 5, Node (leaf 4, 2, leaf 0)))
+
+let test1 = with yield_sum handle tree_yield test_tree
+
+let test2 = 
+  with yield_to_list handle 
+    cond_tree_yield (fun x -> x > 2) test_tree

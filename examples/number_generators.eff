@@ -1,0 +1,88 @@
+type element = int
+
+(* We first borrow some stuff from the state example. *)
+type state = element list
+
+effect Get : unit -> state
+effect Set : state -> unit
+
+(* These equations are sufficient. *)
+theory wstate for {Get, Set} is 
+  { x : state ; z : state -> * |-
+    Set(x; u.Get((); s. z s)) ~ Set(x; u. z x) }
+  and
+  { . ; z : state -> * |-
+    Get((); s.Set(s; u. z s)) ~ Get((); s. z s) }
+
+
+
+(* Theory for generators. *)
+
+effect Next : unit -> element option
+
+theory gen for {Next} is
+  { . ; z : element option -> * |-
+    Next ((); y.
+      match y with
+      | Some x -> Next((); y'. z y')
+      | None -> z (None))
+    ~
+    Next ((); y. Next((); y'. z y')) }
+
+
+  
+(* Implement handlers. *)
+
+let gen_from_lst : int!gen => int!wstate = handler
+  | effect Next () k ->
+      match !Get () with
+      | [] -> k None
+      | x :: xs -> !Set xs; k (Some x)
+
+let state_handler : int!wstate => state -> int = handler
+  | effect Get () k -> (fun s -> k s s)
+  | effect Set s k -> (fun _ -> k () s)
+  | val x -> (fun s -> x)
+
+
+
+(* What can we do with the theory? *)
+
+let rec (sum_first_n : int -> int!gen) n =
+  if n <= 0 then 
+    0
+  else
+    match !Next () with
+    | None -> sum_first_n (n-1) 
+    | Some x -> x + sum_first_n (n-1)
+
+let rec (better_sum_first_n : int -> int!gen) n =
+  if n <= 0 then 
+    0
+  else
+    match !Next () with
+    | None -> 0 (* Thanks to the theory we know that all other will be None *) 
+    | Some x -> x + better_sum_first_n (n-1)
+
+
+
+(* Quick test. *)
+
+let sum_first_n_in_list : int list -> int -> int = fun lst n ->
+  let procedure = 
+    with state_handler handle
+    with gen_from_lst handle
+      sum_first_n n
+  in
+  procedure lst
+
+let better_sum_first_n_in_list : int list -> int -> int = fun lst n ->
+  let procedure = 
+    with state_handler handle
+    with gen_from_lst handle
+      better_sum_first_n n
+  in
+  procedure lst
+
+let test1 = sum_first_n_in_list [1;2;3] 5
+let test2 = better_sum_first_n_in_list [1;2;3] 5

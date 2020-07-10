@@ -1,40 +1,11 @@
-Eff
+EEFF
 ===
 
-Eff is a functional programming language based on algebraic effects and
-their handlers.
+EEFF is an extension of Eff with local algebraic effect theories. The instalation steps are the same as for regular Eff and described below.  
 
-Algebraic effects are a way of adding computational effects to a pure
-functional setting. In a technical sense they are subsumed by the monadic
-approach to computational effects, but they offer new ways of programming
-that are not easily achieved with monads. In particular, algebraic effects
-are combined seamlessly, whereas monad transformers are needed in the
-monadic style.
+For the basic understanding of algebraic handlers we recommend a quick glance at the examples of the `master` branch. The changes in syntax and the introduction to the syntax local effect theories is done in the folder `examples`.
 
-The main idea of Eff is that computational effects are accessed through a
-set of operations, for example `lookup` and `update` for state, `read` and
-`write` for I/O, `raise` for exceptions, etc. The behavior of operations is
-determined by handlers. Just like an exception handler determines what
-happens when an exception is raised, a general handler describes the
-actions taken when an operation is triggered. Examples of handlers include
-state, transactions, non-determinism, stream redirection, backtracking,
-delimited continuations, and many others.
-
-Because Eff supports first-class effects and handlers, programmers may
-define new computational effects, combine existing ones, and handle effects
-in novel ways. For instance, ML-style references are a defined concept in
-Eff.
-
-Eff code looks and feels like that of OCaml because Eff uses OCaml syntax
-extended with constructs for effects and handlers. Furthermore, Eff is a
-statically typed language with parametric polymorphism and type inference.
-The types are similar to those of OCaml and other variants of ML in the
-sense that they do not express any information about computational effects.
-
-For further information visit the [Eff page](http://www.eff-lang.org/)
-or contact the authors Andrej Bauer <Andrej.Bauer@andrej.com> and Matija
-Pretnar <matija@pretnar.info>.
-
+EEFF has been [formalised](https://github.com/zigaLuksic/eeff-formalization) in the Coq proof assistant.
 
 Installation & Usage
 --------------------
@@ -47,7 +18,7 @@ on Windows, we just have not tested it yet.
 
 To install Eff, you need a standard Unix-style build environment as well as
 
-1. [OCaml](https://ocaml.org/), version 4.02.3 or newer,
+1. [OCaml](https://ocaml.org/), version 4.06 or newer,
 2. [Menhir](http://gallium.inria.fr/~fpottier/menhir/) parser generator, and
 3. [js_of_ocaml](http://ocsigen.org/js_of_ocaml/) OCaml to Javascript compiler.
 
