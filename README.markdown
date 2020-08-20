@@ -3,7 +3,7 @@ EEFF
 
 EEFF is an extension of Eff with local algebraic effect theories. The instalation steps are the same as for regular Eff and described below.  
 
-For the basic understanding of algebraic handlers we recommend a quick glance at the examples of the `master` branch. The changes in syntax and the introduction to the syntax local effect theories is done in the folder `examples`.
+For the basic understanding of algebraic handlers we recommend a quick glance at the examples of the `master` branch. For an introduction to the syntax of local effect theories there are multiple examples provided, with `examples/intro_to_theories.eff` serving as a short guide.
 
 EEFF has been [formalised](https://github.com/zigaLuksic/eeff-formalization) in the Coq proof assistant.
 
