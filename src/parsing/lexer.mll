@@ -103,7 +103,7 @@ rule token = parse
   | '!' uname           { let str = Lexing.lexeme lexbuf in
                           EFFNAME (String.sub str 1 (String.length str - 1)) }
   | '\'' lname          { let str = Lexing.lexeme lexbuf in
-                        PARAM (String.sub str 1 (String.length str - 1)) }  
+                        PARAM (String.sub str 1 (String.length str - 1)) }
   | '_'                 { UNDERSCORE }
   | '!'                 { EXCLAMATION }
   | '('                 { LPAREN }

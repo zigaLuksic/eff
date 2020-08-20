@@ -54,12 +54,12 @@ let rec wf_vtype ~loc ctx ty =
       wf_ctype ~loc ctx inty; wf_ctype ~loc ctx outty
   | Type.Apply (lbl, args) ->
       let params, _ = Tctx.lookup_tydef ~loc lbl in
-      if List.length params <> List.length args then
+      if Assoc.length params <> List.length args then
         Error.typing ~loc
           ( "Type `%t` is malformed.@, The type constructor `%t` accepts %d "
           ^^ "arguments, but is applied to %d.")
           (Type.print_vty ([], ty)) (CoreTypes.TyName.print lbl)
-          (List.length params) (List.length args)
+          (Assoc.length params) (List.length args)
       else
         List.iter (wf_vtype ~loc ctx) args
 
@@ -111,7 +111,7 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
         ^^ " which is an implementation bug." )
         (Type.print_vty ([], ty1)) (Type.print_vty ([], ty2)) 
   | Type.Basic x1, Type.Basic x2 -> x1 = x2
-  | Type.Tuple tys1, Type.Tuple tys2 -> 
+  | Type.Tuple tys1, Type.Tuple tys2 ->
       List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
   | Type.Arrow (in_ty1, out_cty1), Type.Arrow (in_ty2, out_cty2) ->
       vsubtype ~loc ~ctx in_ty2 in_ty1 && csubtype ~loc ~ctx out_cty1 out_cty2     
@@ -124,7 +124,7 @@ let rec vsubtype ty1 ty2 ~loc ~ctx =
       vsubtype ~loc ~ctx ty (extract_type ~loc (name, tys))
   | Type.Apply (name1, tys1), Type.Apply (name2, tys2) ->
       CoreTypes.TyName.compare name1 name2 = 0
-      && List.for_all2 (vsubtype ~loc ~ctx) tys1 tys2
+      && parameter_subtype ~loc ~ctx name1 tys1 tys2
   | _, _ -> false
 
 and csubtype cty1 cty2 ~loc ~ctx = 
@@ -145,11 +145,39 @@ and eff_subtype effs1 effs2 ~loc ~ctx =
 and eqs_subtype eqs1 eqs2 =
   List.for_all (fun x -> List.mem x eqs2) eqs1 
 
+and parameter_subtype ~loc ~ctx name tys1 tys2 =
+  let params, _ = Tctx.lookup_tydef ~loc name in
+  let rec checker = function
+    | [], [], [] -> true
+    | p :: pol, t1 :: ts1, t2 :: ts2 -> (
+        match p with
+        | Tctx.Co -> 
+            vsubtype ~loc ~ctx t1 t2 && checker (pol, ts1, ts2)
+        | Tctx.Contra -> 
+            vsubtype ~loc ~ctx t2 t1 && checker (pol, ts1, ts2)
+        | Tctx.Fixed -> 
+            vsubtype ~loc ~ctx t1 t2 && vsubtype ~loc ~ctx t2 t1
+            && checker (pol, ts1, ts2) )
+    | _ ->
+        Error.typing ~loc
+            ( "While checking subtypes for a type `%t` the type applications"
+            ^^ " were incorrect. This should have been caught by the well"
+            ^^ " formedness check.")
+            (CoreTypes.TyName.print name)
+  in
+  checker (Assoc.values_of params, tys1, tys2)
+
 
 (* ========== Patterns ========== *)
 
 let rec pattern_check ctx p ty =
   let loc = p.at in
+  let ty = (* To remove inline issues *)
+    match ty with
+    | Type.Apply (check_name, check_params) ->
+        extract_type ~loc (check_name, check_params)
+    | _ -> ty
+  in
   match p.it with
   | Syntax.PVar x -> Assoc.of_list [(x, ty)]
   | Syntax.PNonbinding -> Assoc.empty
@@ -197,11 +225,8 @@ let rec pattern_check ctx p ty =
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match ty with
-          | Type.Apply (chk_name, chck_params) ->
-              (* Gotta check that renaming *)
-              if Tctx.transparent ~loc chk_name then
-                pattern_check ctx p (extract_type ~loc (chk_name, chck_params))
-              else if CoreTypes.TyName.compare chk_name inf_name <> 0 then
+          | Type.Apply (check_name, check_params) ->
+              if CoreTypes.TyName.compare check_name inf_name <> 0 then
                 Error.typing ~loc 
                 ("Constructor pattern `%t` belongs to variant `%t` but is checked"
                 ^^ " against the type `%t`.")
@@ -209,7 +234,10 @@ let rec pattern_check ctx p ty =
                 (Type.print_vty ([], ty))
               else
               (* Doesnt need to extract types anymore *)
-              let sbst = List.combine inf_params chck_params |> Assoc.of_list in
+              let sbst = 
+                List.combine (Assoc.keys_of inf_params) check_params 
+                |> Assoc.of_list 
+              in
               begin match arg_p_opt, inf_arg_ty_opt with
                 | None, Some arg_ty ->
                     Error.typing ~loc 
@@ -236,6 +264,12 @@ let rec pattern_check ctx p ty =
 
 and value_check ctx v ty =
   let loc = v.at in
+  let ty = (* To remove inline issues *)
+    match ty with
+    | Type.Apply (check_name, check_params) ->
+        extract_type ~loc (check_name, check_params)
+    | _ -> ty
+  in
   match v.it with
   | Syntax.Var x -> 
       (* Could be done via modeswitch but this gives better errors. *)
@@ -276,7 +310,7 @@ and value_check ctx v ty =
       | _ ->
           if vsubtype ~loc ~ctx ty (Type.Tuple []) then () else 
           Error.typing ~loc 
-            ( "A tuple is checked against the incompatible type `%t`." )
+            ( "A tuple or the unit value is checked against the incompatible type `%t`." )
             (Type.print_vty ([], ty))
       end
   | Syntax.VAnnotated (v, ann_ty) ->
@@ -294,17 +328,18 @@ and value_check ctx v ty =
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
           match ty with
-          | Type.Apply (chk_name, chck_params)  ->
-              if Tctx.transparent ~loc chk_name then
-                value_check ctx v (extract_type ~loc (chk_name, chck_params))
-              else if CoreTypes.TyName.compare chk_name inf_name <> 0 then
+          | Type.Apply (check_name, check_params)  ->
+              if CoreTypes.TyName.compare check_name inf_name <> 0 then
                 Error.typing ~loc 
                 ("Constructor `%t` belongs to variant `%t` but is checked"
                 ^^ " against the type `%t`.")
                 (CoreTypes.Label.print lbl) (CoreTypes.TyName.print inf_name)
                 (Type.print_vty ([], ty))
               else
-              let sbst = List.combine inf_params chck_params |> Assoc.of_list in
+              let sbst = 
+                List.combine (Assoc.keys_of inf_params) check_params 
+                |> Assoc.of_list
+              in
               begin match arg_opt, inf_arg_ty_opt with
                 | None, Some arg_ty ->
                     Error.typing ~loc 
@@ -381,7 +416,8 @@ and value_synth ctx v =
             "Constructor `%t` does not belong to a known type."
             (CoreTypes.Label.print lbl)
       | Some (inf_name, inf_params, _, inf_arg_ty_opt) -> (
-          match inf_params with
+          let inf_pars = Assoc.keys_of inf_params in
+          match inf_pars with
           | _ :: _ ->
               Error.typing ~loc 
               ("Constructor `%t` belongs to a non-concrete variant"
@@ -390,7 +426,8 @@ and value_synth ctx v =
               ^^ "and therefore cannot be synthesized. @,"
               ^^ "Please provide type annotations.")
               (CoreTypes.Label.print lbl)
-              (Type.print_vty ([], Tctx.apply_to_params inf_name inf_params))
+              (Type.print_vty 
+                ([], Tctx.apply_to_params inf_name inf_pars))
           | [] ->
             begin match arg_opt, inf_arg_ty_opt with
             | None, Some arg_ty ->
@@ -402,12 +439,15 @@ and value_synth ctx v =
                 Error.typing ~loc 
                   ( "Constructor `%t` does not accept arguments, but is provided with some." )
                   (CoreTypes.Label.print lbl)
-            | None, None -> Tctx.apply_to_params inf_name []
-            | Some arg, Some arg_ty -> 
+            | None, None -> 
+                (* inf_pars = [] *) 
+                Tctx.apply_to_params inf_name []
+            | Some arg, Some arg_ty ->
+                (* inf_pars = [] *)
                 (value_check ctx arg arg_ty);
-                Tctx.apply_to_params inf_name inf_params
+                Tctx.apply_to_params inf_name []
             end
-          ) 
+          )
       end
   | Syntax.Lambda abs ->
       Error.typing ~loc 

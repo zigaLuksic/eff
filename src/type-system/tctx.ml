@@ -5,15 +5,19 @@ type tydef =
   | Sum of (CoreTypes.Label.t, Type.vty option) Assoc.t
   | Inline of Type.vty
 
-type tyctx = (CoreTypes.TyName.t, CoreTypes.TyParam.t list * tydef) Assoc.t
+type typar_polarity = Co | Contra | Fixed
+
+type polar_params = (CoreTypes.TyParam.t, typar_polarity) Assoc.t
+
+type tyctx = (CoreTypes.TyName.t, polar_params * tydef) Assoc.t
 
 let initial : tyctx =
   Assoc.of_list
-    [ (CoreTypes.bool_tyname, ([], Inline Ty.bool_ty))
-    ; (CoreTypes.unit_tyname, ([], Inline Ty.unit_ty))
-    ; (CoreTypes.int_tyname, ([], Inline Ty.int_ty))
-    ; (CoreTypes.string_tyname, ([], Inline Ty.string_ty))
-    ; (CoreTypes.float_tyname, ([], Inline Ty.float_ty))
+    [ (CoreTypes.bool_tyname, (Assoc.empty, Inline Ty.bool_ty))
+    ; (CoreTypes.unit_tyname, (Assoc.empty, Inline Ty.unit_ty))
+    ; (CoreTypes.int_tyname, (Assoc.empty, Inline Ty.int_ty))
+    ; (CoreTypes.string_tyname, (Assoc.empty, Inline Ty.string_ty))
+    ; (CoreTypes.float_tyname, (Assoc.empty, Inline Ty.float_ty))
     ; ( CoreTypes.list_tyname
       , let a = Type.fresh_ty_param () in
         let list_nil = (CoreTypes.nil, None) in
@@ -24,8 +28,8 @@ let initial : tyctx =
                  [Ty.TyParam a; Ty.Apply (CoreTypes.list_tyname, [Ty.TyParam a])])
           )
         in
-        ([a], Sum (Assoc.of_list [list_nil; list_cons])) )
-    ; (CoreTypes.empty_tyname, ([], Sum Assoc.empty)) ]
+        (Assoc.of_list [(a, Co)], Sum (Assoc.of_list [list_nil; list_cons])) )
+    ; (CoreTypes.empty_tyname, (Assoc.empty, Sum Assoc.empty)) ]
 
 let global = ref initial
 
@@ -41,11 +45,6 @@ let lookup_tydef ~loc ty_name =
   | None ->
       Error.typing ~loc "Unknown type %t" (CoreTypes.TyName.print ty_name)
   | Some (params, tydef) -> (params, tydef)
-
-let fresh_tydef ~loc ty_name =
-  let params, tydef = lookup_tydef ~loc ty_name in
-  let params', sbst = Type.refreshing_subst params in
-  (params', subst_tydef sbst tydef)
 
 (** [find_variant lbl] returns the information about the variant type that defines the
     label [lbl]. *)
@@ -63,32 +62,20 @@ let find_variant lbl =
 
 let apply_to_params t ps = Type.Apply (t, List.map (fun p -> Type.TyParam p) ps)
 
-(** [infer_variant lbl] finds a variant type that defines the label [lbl] and returns it
-    with refreshed type parameters and additional information needed for type
-    inference. *)
-let infer_variant lbl =
-  match find_variant lbl with
-  | None -> None
-  | Some (ty_name, ps, _, u) ->
-      let ps', fresh_subst = Ty.refreshing_subst ps in
-      let u' =
-        match u with None -> None | Some x -> Some (Ty.subst_ty fresh_subst x)
-      in
-      Some (apply_to_params ty_name ps', u')
-
 let transparent ~loc ty_name =
   let _, ty = lookup_tydef ~loc ty_name in
   match ty with Sum _ -> false | Inline _ -> true
 
 (* [ty_apply pos t lst] applies the type constructor [t] to the given list of arguments. *)
 let ty_apply ~loc ty_name lst =
-  let xs, ty = lookup_tydef ~loc ty_name in
-  if List.length xs <> List.length lst then
+  let params, ty = lookup_tydef ~loc ty_name in
+  if Assoc.length params <> List.length lst then
     Error.typing ~loc "Type constructors `%t` should be applied to %d arguments."
       (CoreTypes.TyName.print ty_name)
-      (List.length xs)
+      (Assoc.length params)
   else
-    let combined = Assoc.of_list (List.combine xs lst) in
+    let pars = Assoc.keys_of params in
+    let combined = Assoc.of_list (List.combine pars lst) in
     subst_tydef combined ty
 
 (** [check_well_formed ~loc ty] checks that type [ty] is well-formed. *)
@@ -97,9 +84,9 @@ let check_well_formed ~loc tydef =
     | Ty.Basic _ | Ty.TyParam _ -> ()
     | Ty.Apply (ty_name, tys) ->
         let params, _ = lookup_tydef ~loc ty_name in
-        let n = List.length params in
+        let n = Assoc.length params in
         if List.length tys <> n then
-          Error.typing ~loc "The type constructor [%t] expects %d arguments."
+          Error.typing ~loc "The type constructor `%t` expects %d arguments."
             (CoreTypes.TyName.print ty_name)
             n
     | Ty.Arrow (ty1, cty2) -> vcheck ty1 ; ccheck cty2
@@ -149,7 +136,7 @@ let check_shadowing ~loc = function
       let shadow_check_sum (lbl, _) =
         match find_variant lbl with
         | Some (u, _, _, _) ->
-            Error.typing ~loc "Constructor %t is already used in type %t"
+            Error.typing ~loc "Constructor `%t` is already used in type `%t`"
               (CoreTypes.Label.print lbl)
               (CoreTypes.TyName.print u)
         | None -> ()
@@ -157,18 +144,93 @@ let check_shadowing ~loc = function
       Assoc.iter shadow_check_sum lst
   | Inline _ -> ()
 
+(* Functions for calculating the subtyping polarity of type parameters *)
+let flip_pol = function
+  | Co -> Contra
+  | Contra -> Co
+  | Fixed -> Fixed
+
+
+let rec check_pol_vty par pol = function
+  | Type.Apply (name, args) ->
+      let params, tydef = lookup_tydef ~loc:Location.unknown name in
+      let pols = Assoc.values_of params in
+      let checker p ty =
+        match p with
+        | Co -> check_pol_vty par pol ty
+        | Fixed -> pol = Fixed || not (List.mem par (Type.free_params ty))
+        | Contra -> check_pol_vty par (flip_pol pol) ty
+      in
+      List.for_all2 checker pols args
+  | Type.TyParam par' -> if par = par' then pol = Co || pol = Fixed else true
+  | Type.Basic _ -> true
+  | Type.Tuple tys -> List.for_all (check_pol_vty par pol) tys
+  | Type.Arrow (ty1, ty2) -> 
+      check_pol_vty par (flip_pol pol) ty1 && check_pol_cty par pol ty2
+  | Type.Handler (ty1, ty2) -> 
+      check_pol_cty par (flip_pol pol) ty1 && check_pol_cty par pol ty2
+
+and check_pol_cty par pol = function
+  | Type.CTySig (vty, effs) ->
+      check_pol_vty par pol vty && List.for_all (check_pol_eff par pol) effs
+  | Type.CTyTheory (vty, theory) -> check_pol_vty par pol vty
+
+and check_pol_eff par pol = function
+  | Type.LocEff (eff, ty1, ty2) -> 
+      check_pol_vty par pol ty1 && check_pol_vty par (flip_pol pol) ty2
+  | Type.GlobEff eff -> true
+
+let print_pol pol ppf =
+  match pol with
+  | Co -> Print.print ppf "covariant"
+  | Contra -> Print.print ppf "contravariant"
+  | Fixed -> Print.print ppf "fixed"
+
+let check_pol_tydef ~loc name all_pars par pol = function
+  | Sum tydefs ->
+      let checker (lbl, vty_opt) =
+        match vty_opt with
+        | None -> ()
+        | Some ty -> 
+            if check_pol_vty par pol ty then ()
+            else
+              Error.typing ~loc 
+                ( "In the definition of `%t %t` the parameter `%t` was specified "
+                ^^ "to be `%t`, but the check failed for constructor `%t`." )
+                (Print.tuple CoreTypes.TyParam.print_old all_pars)
+                (CoreTypes.TyName.print name) (CoreTypes.TyParam.print_old par)
+                (print_pol pol) (CoreTypes.Label.print lbl)
+      in
+      Assoc.iter checker tydefs
+  | Inline ty ->
+      if check_pol_vty par pol ty then ()
+      else
+        Error.typing ~loc 
+          ( "In the definition of `%t %t` the parameter `%t` was specified "
+          ^^ "to be `%t`, but the check failed." )
+          (Print.tuple CoreTypes.TyParam.print_old all_pars)
+          (CoreTypes.TyName.print name) (CoreTypes.TyParam.print_old par)
+          (print_pol pol)
+
+
 (** [extend_tydefs ~loc tydefs] checks that the simulatenous type definitions [tydefs] are
     well-formed and returns the extended context. *)
 let extend_tydefs ~loc tydefs =
   (* We wish we wrote this in eff, where we could have transactional memory. *)
   let global_orig = !global in
-  let extend_tydef (name, (params, ty)) =
+  let extend_tydef (name, (pol_params, ty)) =
     check_shadowing ~loc ty ;
     match Assoc.lookup name !global with
     | Some _ ->
-        Error.typing ~loc "Type %t already defined."
+        Error.typing ~loc "Type `%t` already defined."
           (CoreTypes.TyName.print name)
-    | None -> global := Assoc.update name (params, ty) !global
+    | None -> 
+      let checker (par, pol) = 
+        check_pol_tydef ~loc name (Assoc.keys_of pol_params) par pol ty
+      in
+      global := Assoc.update name (pol_params, ty) !global;
+      (* We need to add first and check later, so it works with recursion. *)
+      Assoc.iter checker pol_params
   in
   try
     Assoc.iter extend_tydef tydefs ;

@@ -43,7 +43,7 @@ module type T = sig
 
   val process_tydef :
        state
-    -> (CoreTypes.TyName.t, CoreTypes.TyParam.t list * Tctx.tydef) Assoc.t
+    -> (CoreTypes.TyName.t, Tctx.polar_params * Tctx.tydef) Assoc.t
     -> state
 
   val finalize : state -> unit

@@ -433,17 +433,25 @@ mark_position(X):
   x = X
   { {it= x; at= Location.make $startpos $endpos}}
 
-params:
+pol_param:
+  | p = PARAM
+    { (p, Tctx.Fixed) }
+  | PLUS p = PARAM
+    { (p, Tctx.Co) }
+  | MINUS p = PARAM
+    { (p, Tctx.Contra) }
+
+pol_params:
   |
     { [] }
-  | p = PARAM
+  | p = pol_param
     { [p] }
-  | LPAREN ps = separated_nonempty_list(COMMA, PARAM) RPAREN
+  | LPAREN ps = separated_nonempty_list(COMMA, pol_param) RPAREN
     { ps }
 
 ty_def:
-  | ps = params t = tyname EQUAL x = defined_ty
-    { (t, (ps, x)) }
+  | ps = pol_params t = tyname EQUAL x = defined_ty
+    { (t, (Assoc.of_list ps, x)) }
 
 defined_ty:
   | lst = cases(sum_case)

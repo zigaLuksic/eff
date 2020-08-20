@@ -27,9 +27,9 @@ val desugar_top_let_rec :
 
 val desugar_tydefs :
      state
-  -> (string, SugaredSyntax.typaram list * SugaredSyntax.tydef) Assoc.t
+  -> (string, (SugaredSyntax.typaram, Tctx.typar_polarity) Assoc.t * SugaredSyntax.tydef) Assoc.t
   -> state
-     * (CoreTypes.TyName.t, CoreTypes.TyParam.t list * Tctx.tydef) Assoc.t
+     * (CoreTypes.TyName.t, Tctx.polar_params * Tctx.tydef) Assoc.t
 
 val desugar_def_theory :
      state

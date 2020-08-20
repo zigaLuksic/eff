@@ -121,7 +121,7 @@ let ((>=.) : float -> float -> bool) x y = (y <=. x)
 let ((<>.) : float -> float -> bool) x y = not (x =. y)
 
 (* Option *)
-type 'a option = None | Some of 'a
+type +'a option = None | Some of 'a
 
 (* Lists *)
 

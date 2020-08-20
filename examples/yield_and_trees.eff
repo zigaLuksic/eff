@@ -1,18 +1,20 @@
 (* Just a short example to check that type definitions work. *)
-(* WARNING: The type system currently has no mechanism for distinguishing
-    between covariant and contravariant positions and treats all positions
-    as covariatn. This will be fixed in later versions via user provided
-    annotations that are then checked to be correct. *)
 
+(* Custom types allow subtyping, but the user must mark in the definition.
+   Use `+'a` for covariant parameters, `-'b` for contravariant ones and `'c`
+   for fixed parameters. The type system checks that parameters fit. *)
+type +'a tree = Empty | Node of 'a tree * 'a * 'a tree
 
-type 'a tree = Empty | Node of 'a tree * 'a * 'a tree
+(* This one fails because the second parameter is marked as contravariant
+   but is also present in a covariant position. Changing it to `'b`
+   resolves the issue. *)
+
+(* type ('a, -'b) test = A of 'a | B of 'b -> 'a | C of 'a -> 'a * 'b *)
 
 (* Type variables are allowed in definitions but not annotations. Therefore
    the type system refuses to work with data types such as lists without
    unless a specific type is provided. The term `Empty` can only be used
    if it is clear what 'a is. *)
-
-
 
 (* Tree traversal *)
 effect Yield : int -> unit

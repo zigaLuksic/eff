@@ -22,7 +22,6 @@ and eff =
 
 and eff_sig = eff list
 
-
 let int_ty = Basic Const.IntegerTy
 
 let string_ty = Basic Const.StringTy
@@ -66,7 +65,7 @@ let rec subst_ty sbst ty =
 (** [free_params ty] returns three lists of type parameters that occur in [ty].
     Each parameter is listed only once and in order in which it occurs when
     [ty] is displayed. *)
-(* WARNING: This relies heavliy on parameters not being in effects *)
+(* WARNING: This relies heavliy on parameters not being in global effects *)
 let free_params ty =
   let flatten_map f lst = List.fold_left ( @ ) [] (List.map f lst) in
   let rec free_vty = function

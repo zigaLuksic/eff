@@ -134,7 +134,7 @@ let syntax_to_core_params ts =
 (** [desugar_tydef state params def] desugars the type definition with parameters
     [params] and definition [def]. *)
 let desugar_tydef state params def =
-  let ty_sbst = syntax_to_core_params params in
+  let par_subst = syntax_to_core_params (Assoc.keys_of params) in
   let state', def' =
     match def with
     | Sugared.TySum assoc ->
@@ -147,7 +147,7 @@ let desugar_tydef state params def =
           match cons with
           | None -> (st, (unsugared_lbl, None))
           | Some t ->
-              let st', t' = desugar_vtype ty_sbst st t in
+              let st', t' = desugar_vtype par_subst st t in
               (st', (unsugared_lbl, Some t'))
         in
         let constructors =
@@ -170,10 +170,14 @@ let desugar_tydef state params def =
         in
         (state', Tctx.Sum assoc')
     | Sugared.TyInline t ->
-        let state', t' = desugar_vtype ty_sbst state t in
+        let state', t' = desugar_vtype par_subst state t in
         (state', Tctx.Inline t')
   in
-  (state', (Assoc.values_of ty_sbst, def'))
+  let pol_pars = 
+    List.combine (Assoc.values_of par_subst) (Assoc.values_of params)
+    |> Assoc.of_list
+  in
+  (state', (pol_pars, def'))
 
 (** [desugar_tydefs defs] desugars the simultaneous type definitions [defs]. *)
 let desugar_tydefs state sugared_defs =
@@ -481,7 +485,6 @@ and desugar_handler loc state
 (* ========== Desugaring of templates. ========== *)
 
 let rec desugar_template state {it= tmpl; at= loc} =
-  (* Fix the first two arguments as they do not change *)
   let if_then_else e c1 c2 =
     let true_p = add_loc (Untyped.PConst Const.of_true) c1.at in
     let false_p = add_loc (Untyped.PConst Const.of_false) c2.at in
