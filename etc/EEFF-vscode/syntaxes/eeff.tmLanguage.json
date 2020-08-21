@@ -1,0 +1,96 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "EEFF",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		}
+	],
+	"repository": {
+		"strings": {
+			"name": "string.quoted.double.eeff",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.eeff",
+					"match": "\\\\."
+				}
+			]
+		},
+		"keywords": {
+			"patterns": [
+			{
+				"name": "keyword.control.eeff",
+				"match": "\\b(if|then|else|with|handle|let|rec|in|handler|function|fun|val)\\b"
+			},
+			{
+				"match": "\\|\\s*(effect)\\b",
+				"captures": {
+          "1" : { "name" : "keyword.control.eeff" }
+       }
+      },
+      {
+				"name": "keyword.other.typedef.eeff",
+				"match": "\\b(type|effect|theory|for|is|and|of)\\b"
+      },
+      {
+				"name": "constant.boolean.eeff",
+				"match": "\\b(true|false)\\b"
+      },
+      {
+				"name": "constant.numeric.eeff",
+				"match": "\\b\\d+\\b"
+      },
+      {
+				"name": "symbol.theorysymbol.eeff",
+				"match": "({|}|~|\\|-)"
+      },
+      {
+				"name": "variable.invocation.eeff",
+				"match": "!([A-Z](\\w*))"
+      },
+      {
+				"name": "symbol.typesymbol.eeff",
+				"match": "(->|=>|:|!)"
+      },
+      { 
+        "name": "variable.typepar.eeff",
+        "match": "(\\+|\\-)?\\'(\\w*)"
+      },
+      {
+        "name": "string.quoted.double.eeff",
+				"begin": "\"",
+				"end": "\"",
+				"patterns": [
+					{
+						"name": "constant.character.escape.eeff",
+						"match": "\\\\."
+					}
+				]
+      },
+      {
+        "name": "comment.block.eeff",
+        "begin": "\\(\\*",
+        "end": "\\*\\)",
+        "patterns": [
+          {
+            "name": "constant.character.escape.eeff",
+            "match": "\\\\."
+          }
+        ]
+      },
+      {
+        "match": "(\\b|\\W)([A-Z](\\w*))",
+        "captures": {
+          "2" : { "name" : "variable.constructor.eeff" }
+       }
+			}
+		]
+		}
+	},
+	"scopeName": "source.eeff"
+}

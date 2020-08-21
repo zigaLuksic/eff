@@ -1,0 +1,25 @@
+{
+    "name": "EEFF",
+    "displayName": "EEFF-coloring",
+    "description": "Simple color scheme for the local effect theory extension of Eff.",
+    "version": "0.0.1",
+    "engines": {
+        "vscode": "^1.48.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [{
+            "id": "eeff",
+            "aliases": ["EEFF", "eeff"],
+            "extensions": [".eff"],
+            "configuration": "./language-configuration.json"
+        }],
+        "grammars": [{
+            "language": "eeff",
+            "scopeName": "source.eeff",
+            "path": "./syntaxes/eeff.tmLanguage.json"
+        }]
+    }
+}
