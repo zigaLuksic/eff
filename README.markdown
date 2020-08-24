@@ -7,7 +7,7 @@ For the basic understanding of algebraic handlers we recommend a quick glance at
 
 EEFF has been [formalised](https://github.com/zigaLuksic/eeff-formalization) in the Coq proof assistant.
 
-(A simple code highlighting extension for VSCode is included in `etc/EEFF-vscode`. The instalation instruction are in the file `etc/EEFF-vscode/vsc-extension-quickstart.md`.) 
+A simple code highlighting extension for VSCode is included in `etc/EEFF-vscode`. The instalation instruction are in the file `etc/EEFF-vscode/installing-extension.md`.
 
 Installation & Usage
 --------------------
