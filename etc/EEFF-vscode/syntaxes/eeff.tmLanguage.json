@@ -25,7 +25,7 @@
 			"patterns": [
 			{
 				"name": "keyword.control.eeff",
-				"match": "\\b(if|then|else|with|handle|let|rec|in|handler|function|fun|val)\\b"
+				"match": "\\b(if|then|else|match|with|handle|let|rec|in|handler|function|fun|val)\\b"
 			},
 			{
 				"match": "\\|\\s*(effect)\\b",
@@ -59,7 +59,7 @@
       },
       { 
         "name": "variable.typepar.eeff",
-        "match": "(\\+|\\-)?\\'(\\w*)"
+        "match": "(\\+|\\-)?\\'(\\w+)"
       },
       {
         "name": "string.quoted.double.eeff",
